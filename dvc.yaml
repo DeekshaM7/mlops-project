@@ -1,0 +1,42 @@
+stages:
+  ingest:
+    cmd: python -m src.data.ingest --input water_potability.csv --output data/raw/water_potability.csv
+    deps:
+      - water_potability.csv
+      - src/data/ingest.py
+    outs:
+      - data/raw/water_potability.csv
+  preprocess:
+    cmd: python -m src.data.preprocess --params configs/params.yaml
+    deps:
+      - data/raw/water_potability.csv
+      - src/data/preprocess.py
+      - configs/params.yaml
+    outs:
+      - data/processed/train.csv
+      - data/processed/val.csv
+      - data/processed/test.csv
+      - data/processed/transformer.joblib
+  train:
+    cmd: python -m src.models.train --params configs/params.yaml
+    deps:
+      - data/processed/train.csv
+      - data/processed/val.csv
+      - src/models/train.py
+      - configs/params.yaml
+    outs:
+      - app/model_registry/model.joblib
+      - artifacts/metrics/train_metrics.json
+  evaluate:
+    cmd: python -m src.models.evaluate --params configs/params.yaml
+    deps:
+      - data/processed/test.csv
+      - app/model_registry/model.joblib
+      - src/models/evaluate.py
+      - configs/params.yaml
+    outs:
+      - artifacts/metrics/test_metrics.json
+      - artifacts/plots/roc_curve.png
+      - artifacts/plots/confusion_matrix.png
+
+

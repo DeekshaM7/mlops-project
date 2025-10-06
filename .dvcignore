@@ -1,0 +1,14 @@
+.venv/
+__pycache__/
+.ipynb_checkpoints/
+.git/
+.pytest_cache/
+dist/
+build/
+site/
+artifacts/
+app/model_registry/
+data/processed/
+model_registry/
+
+

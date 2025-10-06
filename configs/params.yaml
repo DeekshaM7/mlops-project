@@ -1,0 +1,31 @@
+seed: 42
+data:
+  raw_path: data/raw/water_potability.csv
+  processed_dir: data/processed
+  target_column: Potability
+preprocess:
+  imputation_strategy: median
+  scale: true
+  test_size: 0.2
+  val_size: 0.1
+  random_state: 42
+model:
+  type: random_forest
+  params:
+    n_estimators: 300
+    max_depth: null
+    min_samples_split: 2
+    min_samples_leaf: 1
+    class_weight: balanced
+train:
+  n_trials: 20
+  scoring: roc_auc
+  cv_folds: 5
+evaluate:
+  threshold: 0.5
+  plots_dir: artifacts/plots
+registry:
+  dir: app/model_registry
+  model_filename: model.joblib
+
+
