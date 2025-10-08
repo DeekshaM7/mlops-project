@@ -1,15 +1,15 @@
 stages:
   ingest:
-    cmd: python -m src.data.ingest --input data/water_potability.csv --output data/water_potability.csv
+    cmd: python -m src.data.ingest --input data/raw/water_potability.csv --output data/processed/water_potability.csv
     deps:
-      - data/water_potability.csv
+      - data/raw/water_potability.csv
       - src/data/ingest.py
     outs:
-      - data/water_potability.csv
+      - data/processed/water_potability.csv
   preprocess:
     cmd: python -m src.data.preprocess --params configs/params.yaml
     deps:
-      - data/water_potability.csv
+      - data/processed/water_potability.csv
       - src/data/preprocess.py
       - configs/params.yaml
     outs: 

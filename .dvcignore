@@ -6,9 +6,6 @@ __pycache__/
 dist/
 build/
 site/
-artifacts/
-app/model_registry/
-data/processed/
-model_registry/
+
 
 
