@@ -1,0 +1,111 @@
+schema: '2.0'
+stages:
+  ingest:
+    cmd: python -m src.data.ingest --input data/raw/water_potability.csv 
+      --output data/processed/water_potability.csv
+    deps:
+    - path: data/raw/water_potability.csv
+      hash: md5
+      md5: a5eeae83d792e40da6c2f9e1eab945fc
+      size: 525187
+    - path: src/data/ingest.py
+      hash: md5
+      md5: deb61de0b0e9a28a137be2832f3c7b80
+      size: 700
+    outs:
+    - path: data/processed/water_potability.csv
+      hash: md5
+      md5: a5eeae83d792e40da6c2f9e1eab945fc
+      size: 525187
+  preprocess:
+    cmd: python -m src.data.preprocess --params configs/params.yaml
+    deps:
+    - path: configs/params.yaml
+      hash: md5
+      md5: fe4c078640b0d9d5379f794f441184a1
+      size: 593
+    - path: data/processed/water_potability.csv
+      hash: md5
+      md5: a5eeae83d792e40da6c2f9e1eab945fc
+      size: 525187
+    - path: src/data/preprocess.py
+      hash: md5
+      md5: 71f0746df1fc8b9069dffab76f992eb8
+      size: 3916
+    outs:
+    - path: data/processed/test.csv
+      hash: md5
+      md5: 74a05764f946ead1a0ab3add13ce8c1b
+      size: 118556
+    - path: data/processed/train.csv
+      hash: md5
+      md5: 79e20acbfe76e65358572fbee354f8f5
+      size: 414033
+    - path: data/processed/transformer.joblib
+      hash: md5
+      md5: c354d36c7f1b63506e1bdee047eb01ff
+      size: 2616
+    - path: data/processed/val.csv
+      hash: md5
+      md5: e08563a562b21f6a4589eb9081a77977
+      size: 59295
+  train:
+    cmd: python -m src.models.train --params configs/params.yaml
+    deps:
+    - path: configs/params.yaml
+      hash: md5
+      md5: fe4c078640b0d9d5379f794f441184a1
+      size: 593
+    - path: data/processed/train.csv
+      hash: md5
+      md5: 79e20acbfe76e65358572fbee354f8f5
+      size: 414033
+    - path: data/processed/val.csv
+      hash: md5
+      md5: e08563a562b21f6a4589eb9081a77977
+      size: 59295
+    - path: src/models/train.py
+      hash: md5
+      md5: f8c5649ec1bc5ed1ce1ba3f0125da876
+      size: 3451
+    outs:
+    - path: app/model_registry/model.joblib
+      hash: md5
+      md5: 6f5e0c93fa523982b0e1eb35c0b418fe
+      size: 10903833
+    - path: artifacts/metrics/train_metrics.json
+      hash: md5
+      md5: 743ac07155b17169963c8df2c8e4e145
+      size: 164
+  evaluate:
+    cmd: python -m src.models.evaluate --params configs/params.yaml
+    deps:
+    - path: app/model_registry/model.joblib
+      hash: md5
+      md5: 6f5e0c93fa523982b0e1eb35c0b418fe
+      size: 10903833
+    - path: configs/params.yaml
+      hash: md5
+      md5: fe4c078640b0d9d5379f794f441184a1
+      size: 593
+    - path: data/processed/test.csv
+      hash: md5
+      md5: 74a05764f946ead1a0ab3add13ce8c1b
+      size: 118556
+    - path: src/models/evaluate.py
+      hash: md5
+      md5: 109bebe2b20cb7cf9ef17bfa0250e999
+      size: 2150
+    outs:
+    - path: artifacts/metrics/test_metrics.json
+      hash: md5
+      md5: e7e897d0f6c7361c4466b54373624dd1
+      size: 96
+    - path: artifacts/plots/confusion_matrix.png
+      hash: md5
+      md5: b662609e50da6084deba3c35a09ba557
+      size: 22903
+    - path: artifacts/plots/roc_curve.png
+      hash: md5
+      md5: 3204aeb7d61776c4e152c76964de3fba
+      size: 36994
