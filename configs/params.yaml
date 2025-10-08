@@ -1,6 +1,6 @@
 seed: 42
 data:
-  raw_path: data/raw/water_potability.csv
+  raw_path: data/water_potability.csv
   processed_dir: data/processed
   target_column: Potability
 preprocess:

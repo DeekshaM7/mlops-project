@@ -13,7 +13,7 @@ Quickstart
    - `git init`
    - `dvc init`
 3. Track data and run pipeline:
-   - `dvc add data/raw/water_potability.csv`
+   - `dvc add data/water_potability.csv`
    - `dvc repro`
 
 Project Structure
