@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Water Potability Predictor</title>
+  <style>
+    :root{--bg:#f6fbff;--card:#ffffff;--accent:#0ea5a4;--muted:#6b7280}
+    body{font-family:Inter,system-ui,Segoe UI,Roboto,'Helvetica Neue',Arial;margin:0;background:linear-gradient(180deg,#e6f7f7 0%,var(--bg)100%);display:flex;align-items:center;justify-content:center;height:100vh}
+    .card{width:min(880px,96%);background:var(--card);box-shadow:0 8px 30px rgba(2,6,23,0.08);border-radius:12px;padding:28px;display:grid;grid-template-columns:1fr 340px;gap:24px}
+    h1{margin:0 0 6px;font-size:20px}
+    p.lead{margin:0;color:var(--muted);font-size:13px}
+    form{display:flex;flex-direction:column;gap:12px}
+    .grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+    label{font-size:13px;color:#111827}
+    input[type=number]{width:100%;padding:10px;border:1px solid #e6eef2;border-radius:8px;font-size:14px}
+    .actions{display:flex;gap:8px;margin-top:6px}
+    button{background:var(--accent);color:#fff;border:none;padding:10px 12px;border-radius:8px;cursor:pointer;font-weight:600}
+    button[disabled]{opacity:.6;cursor:not-allowed}
+    .result{background:linear-gradient(90deg,#ecfdfd,#f0f9ff);border-radius:8px;padding:12px;border:1px solid #dff3f3}
+    .muted{color:var(--muted);font-size:13px}
+    .small{font-size:12px;color:var(--muted)}
+    pre.sample{background:#0f172a;color:#fff;padding:10px;border-radius:8px;overflow:auto;font-size:12px}
+    @media (max-width:800px){.card{grid-template-columns:1fr;gap:16px}}
+  </style>
+</head>
+<body>
+  <div class="card" role="main">
+    <div>
+      <h1>Water Potability Predictor</h1>
+      <p class="lead">Enter physico‑chemical measurements of the sample below and click Predict. This page posts JSON to <code>/predict</code> on the same host:port (container must expose the API).</p>
+
+      <form id="predictForm">
+        <div class="grid">
+          <div>
+            <label for="ph">pH</label>
+            <input id="ph" name="ph" type="number" step="any" placeholder="e.g. 7.2" required />
+          </div>
+          <div>
+            <label for="Hardness">Hardness</label>
+            <input id="Hardness" name="Hardness" type="number" step="any" placeholder="e.g. 150" required />
+          </div>
+          <div>
+            <label for="Solids">Solids</label>
+            <input id="Solids" name="Solids" type="number" step="any" placeholder="e.g. 20000" required />
+          </div>
+          <div>
+            <label for="Chloramines">Chloramines</label>
+            <input id="Chloramines" name="Chloramines" type="number" step="any" placeholder="e.g. 7.0" required />
+          </div>
+          <div>
+            <label for="Sulfate">Sulfate</label>
+            <input id="Sulfate" name="Sulfate" type="number" step="any" placeholder="e.g. 300" required />
+          </div>
+          <div>
+            <label for="Conductivity">Conductivity</label>
+            <input id="Conductivity" name="Conductivity" type="number" step="any" placeholder="e.g. 400" required />
+          </div>
+          <div>
+            <label for="Organic_carbon">Organic carbon</label>
+            <input id="Organic_carbon" name="Organic_carbon" type="number" step="any" placeholder="e.g. 10" required />
+          </div>
+          <div>
+            <label for="Trihalomethanes">Trihalomethanes</label>
+            <input id="Trihalomethanes" name="Trihalomethanes" type="number" step="any" placeholder="e.g. 80" required />
+          </div>
+          <div>
+            <label for="Turbidity">Turbidity</label>
+            <input id="Turbidity" name="Turbidity" type="number" step="any" placeholder="e.g. 3" required />
+          </div>
+        </div>
+
+        <div class="actions">
+          <button id="predictBtn" type="submit">Predict</button>
+          <button id="exampleBtn" type="button">Load example</button>
+          <div class="small muted" style="align-self:center">Local API: <code>http://0.0.0.0:8000/predict</code></div>
+        </div>
+      </form>
+
+      <div style="margin-top:12px">
+        <div id="message" class="small muted">Note: If you open this file from the filesystem (file://) the browser may block cross-origin requests. Serve it from the same origin as the API or enable CORS on the FastAPI app for testing.</div>
+      </div>
+    </div>
+
+    <aside>
+      <div class="result">
+        <div class="small muted">Prediction</div>
+        <div id="predictionOutput" style="margin-top:8px">No prediction yet.</div>
+      </div>
+
+      <div style="margin-top:14px">
+        <div class="small muted">Sample payload</div>
+        <pre class="sample" id="samplePayload">{
+  "values": [7.2, 150, 20000, 7.0, 300, 400, 10, 80, 3]
+}</pre>
+      </div>
+
+      <div style="margin-top:12px" class="small muted">Tip: If you get CORS errors, add CORS middleware to FastAPI or serve this file from the API (e.g. static files).</div>
+    </aside>
+  </div>
+
+  <script>
+    const apiUrl = window.location.origin + '/predict'; // uses same host:port as page
+    const form = document.getElementById('predictForm');
+    const predictBtn = document.getElementById('predictBtn');
+    const exampleBtn = document.getElementById('exampleBtn');
+    const output = document.getElementById('predictionOutput');
+    const sample = document.getElementById('samplePayload');
+
+    exampleBtn.addEventListener('click', () => {
+      const vals = [7.2, 150, 20000, 7.0, 300, 400, 10, 80, 3];
+      const keys = ['ph','Hardness','Solids','Chloramines','Sulfate','Conductivity','Organic_carbon','Trihalomethanes','Turbidity'];
+      keys.forEach((k,i) => { const el = document.getElementById(k); if(el) el.value = vals[i]; });
+    });
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      predictBtn.disabled = true;
+      predictBtn.textContent = 'Predicting...';
+      output.textContent = '';
+
+      try {
+        // gather inputs in the order matching the sample payload
+        const order = ['ph','Hardness','Solids','Chloramines','Sulfate','Conductivity','Organic_carbon','Trihalomethanes','Turbidity'];
+        const values = order.map(id => {
+          const v = parseFloat(document.getElementById(id).value);
+          if (Number.isNaN(v)) throw new Error('All fields must be numeric');
+          return v;
+        });
+
+        // update sample preview
+        sample.textContent = JSON.stringify({values}, null, 2);
+
+        const resp = await fetch(apiUrl, {
+          method: 'POST',
+          headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({values})
+        });
+
+        if (!resp.ok) {
+          const txt = await resp.text();
+          throw new Error(`API error ${resp.status}: ${txt}`);
+        }
+
+        const json = await resp.json();
+        const prob = json.probability_potable ?? json.probability ?? json.probability_potability;
+        const pred = json.prediction;
+        output.innerHTML = `<div style="font-weight:700;font-size:18px">${(prob*100).toFixed(1)}% potable</div><div class="small muted">Prediction: <strong>${pred === 1 ? 'Potable' : 'Not potable'}</strong></div>`;
+      } catch (err) {
+        output.innerHTML = `<div style="color:#b91c1c">${err.message}</div>`;
+      } finally {
+        predictBtn.disabled = false;
+        predictBtn.textContent = 'Predict';
+      }
+    });
+  </script>
+</body>
+</html>

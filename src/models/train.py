@@ -3,6 +3,8 @@ import os
 from typing import Dict, Any
 
 import joblib
+import mlflow
+import mlflow.sklearn
 import numpy as np
 import optuna
 import pandas as pd
@@ -66,37 +68,70 @@ def main() -> None:
 	registry_dir = params["registry"]["dir"]
 	model_filename = params["registry"]["model_filename"]
 
-	X_train, y_train, X_val, y_val = load_splits(processed_dir, target_column)
+	# Initialize MLflow
+	mlflow.set_experiment("water-potability-classification")
+	
+	with mlflow.start_run():
+		X_train, y_train, X_val, y_val = load_splits(processed_dir, target_column)
 
-	# Hyperparameter tuning
-	n_trials = int(params["train"]["n_trials"])
-	cv_folds = int(params["train"]["cv_folds"])
-	study = optuna.create_study(direction="maximize")
-	study.optimize(lambda t: objective(t, X_train, y_train, cv_folds), n_trials=n_trials)
-	best_params = study.best_params
+		# Log dataset info
+		mlflow.log_param("n_samples_train", len(X_train))
+		mlflow.log_param("n_samples_val", len(X_val))
+		mlflow.log_param("n_features", X_train.shape[1])
 
-	# Train final model using best params
-	best_model = RandomForestClassifier(
-		class_weight="balanced",
-		random_state=42,
-		n_jobs=-1,
-		**best_params,
-	)
-	X_tr_full = np.vstack([X_train, X_val])
-	y_tr_full = np.concatenate([y_train, y_val])
-	best_model.fit(X_tr_full, y_tr_full)
+		# Hyperparameter tuning
+		n_trials = int(params["train"]["n_trials"])
+		cv_folds = int(params["train"]["cv_folds"])
+		mlflow.log_param("n_trials", n_trials)
+		mlflow.log_param("cv_folds", cv_folds)
+		
+		study = optuna.create_study(direction="maximize")
+		study.optimize(lambda t: objective(t, X_train, y_train, cv_folds), n_trials=n_trials)
+		best_params = study.best_params
 
-	# Save model
-	ensure_dir(registry_dir)
-	model_path = os.path.join(registry_dir, model_filename)
-	joblib.dump(best_model, model_path)
+		# Log best hyperparameters
+		for param, value in best_params.items():
+			mlflow.log_param(param, value)
 
-	# Save metrics for training set (AUC on val as proxy)
-	val_proba = best_model.predict_proba(X_val)[:, 1]
-	train_metrics = {"val_roc_auc": roc_auc_score(y_val, val_proba), "best_params": best_params}
-	ensure_dir("artifacts/metrics")
-	save_json(train_metrics, "artifacts/metrics/train_metrics.json")
-	print(f"Model saved to {model_path}; AUC(val)={train_metrics['val_roc_auc']:.4f}")
+		# Train final model using best params
+		best_model = RandomForestClassifier(
+			class_weight="balanced",
+			random_state=42,
+			n_jobs=-1,
+			**best_params,
+		)
+		X_tr_full = np.vstack([X_train, X_val])
+		y_tr_full = np.concatenate([y_train, y_val])
+		best_model.fit(X_tr_full, y_tr_full)
+
+		# Save model
+		ensure_dir(registry_dir)
+		model_path = os.path.join(registry_dir, model_filename)
+		joblib.dump(best_model, model_path)
+
+		# Save metrics for training set (AUC on val as proxy)
+		val_proba = best_model.predict_proba(X_val)[:, 1]
+		val_auc = roc_auc_score(y_val, val_proba)
+		train_metrics = {"val_roc_auc": val_auc, "best_params": best_params}
+		
+		# Log metrics to MLflow
+		mlflow.log_metric("val_roc_auc", val_auc)
+		mlflow.log_metric("best_cv_score", study.best_value)
+		
+		# Log model to MLflow
+		mlflow.sklearn.log_model(
+			best_model, 
+			"model",
+			registered_model_name="water-potability-classifier"
+		)
+		
+		# Log artifacts
+		ensure_dir("artifacts/metrics")
+		save_json(train_metrics, "artifacts/metrics/train_metrics.json")
+		mlflow.log_artifact("artifacts/metrics/train_metrics.json")
+		
+		print(f"Model saved to {model_path}; AUC(val)={val_auc:.4f}")
+		print(f"MLflow run ID: {mlflow.active_run().info.run_id}")
 
 
 if __name__ == "__main__":
