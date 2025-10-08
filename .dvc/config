@@ -1,0 +1,16 @@
+# DVC Configuration for AWS S3
+# This file configures DVC to use AWS S3 as remote storage
+
+# ['remote "origin"']
+#     url = s3://your-dvc-bucket/data
+#     region = us-east-1
+    
+# # Optional: Configure cache directory
+# [core]
+#     remote = origin
+#     analytics = false
+    
+# Optional: Configure metrics and plots
+# ['core']
+#     metrics = ['artifacts/metrics/train_metrics.json', 'artifacts/metrics/test_metrics.json']
+#     plots = ['artifacts/plots/roc_curve.png', 'artifacts/plots/confusion_matrix.png']

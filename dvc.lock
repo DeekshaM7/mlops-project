@@ -66,24 +66,24 @@ stages:
       size: 59295
     - path: src/models/train.py
       hash: md5
-      md5: f8c5649ec1bc5ed1ce1ba3f0125da876
-      size: 3451
+      md5: f49b8cac0172978ce7e33e1920c27618
+      size: 4437
     outs:
     - path: app/model_registry/model.joblib
       hash: md5
-      md5: 6f5e0c93fa523982b0e1eb35c0b418fe
-      size: 10903833
+      md5: 4d8e2d43b23c5db123e589787b4b3a59
+      size: 15487193
     - path: artifacts/metrics/train_metrics.json
       hash: md5
-      md5: 743ac07155b17169963c8df2c8e4e145
-      size: 164
+      md5: c43e8da02a180edaf981839b4d25a457
+      size: 156
   evaluate:
     cmd: python -m src.models.evaluate --params configs/params.yaml
     deps:
     - path: app/model_registry/model.joblib
       hash: md5
-      md5: 6f5e0c93fa523982b0e1eb35c0b418fe
-      size: 10903833
+      md5: 4d8e2d43b23c5db123e589787b4b3a59
+      size: 15487193
     - path: configs/params.yaml
       hash: md5
       md5: fe4c078640b0d9d5379f794f441184a1
@@ -99,13 +99,13 @@ stages:
     outs:
     - path: artifacts/metrics/test_metrics.json
       hash: md5
-      md5: e7e897d0f6c7361c4466b54373624dd1
-      size: 96
+      md5: 82456304b6f30b8742af8f239f40a376
+      size: 101
     - path: artifacts/plots/confusion_matrix.png
       hash: md5
-      md5: b662609e50da6084deba3c35a09ba557
-      size: 22903
+      md5: dd513ba172b2fda3856d98bd27ce9985
+      size: 22968
     - path: artifacts/plots/roc_curve.png
       hash: md5
-      md5: 3204aeb7d61776c4e152c76964de3fba
-      size: 36994
+      md5: 4940089df2d3dfa248f1611f3255862e
+      size: 36881
