@@ -24,10 +24,10 @@ repro:
 	dvc repro -q
 
 run-api:
-	.\.venv\Scripts\Activate.ps1; uvicorn app.main:app --reload --port 8000
+	.\.venv\Scripts\Activate.ps1; python -m flask --app app.main run --host=0.0.0.0 --port=8000
 
 docker-build:
-	docker build -t water-quality-api ./app
+	docker build -t water-quality-api -f app/Dockerfile .
 
 docker-run:
 	docker run -p 8000:8000 water-quality-api
