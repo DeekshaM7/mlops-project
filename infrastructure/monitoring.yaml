@@ -1,0 +1,357 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'MLOps Monitoring Infrastructure with CloudWatch'
+
+Parameters:
+  Environment:
+    Type: String
+    Default: production
+    AllowedValues: [development, staging, production]
+    Description: Environment name
+  
+  ProjectName:
+    Type: String
+    Default: water-potability-classifier
+    Description: Project name for resource naming
+  
+  ApplicationName:
+    Type: String
+    Default: mlops-app
+    Description: Application name
+  
+  NotificationEmail:
+    Type: String
+    Description: Email for alarm notifications
+    Default: admin@example.com
+
+Resources:
+  # SNS Topic for Alerts
+  MLOpsAlarmTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub '${ProjectName}-${Environment}-alerts'
+      DisplayName: !Sub 'MLOps Alerts - ${Environment}'
+      
+  MLOpsAlarmSubscription:
+    Type: AWS::SNS::Subscription
+    Properties:
+      TopicArn: !Ref MLOpsAlarmTopic
+      Protocol: email
+      Endpoint: !Ref NotificationEmail
+
+  # CloudWatch Log Groups
+  ApplicationLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/${ProjectName}/${Environment}/application'
+      RetentionInDays: 30
+
+  ModelInferenceLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/${ProjectName}/${Environment}/model-inference'
+      RetentionInDays: 90
+
+  ModelTrainingLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/${ProjectName}/${Environment}/model-training'
+      RetentionInDays: 90
+
+  GovernanceLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/${ProjectName}/${Environment}/governance'
+      RetentionInDays: 365  # Keep governance logs longer
+
+  # Custom Metrics for Model Performance
+  ModelPerformanceLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/${ProjectName}/${Environment}/model-metrics'
+      RetentionInDays: 365
+
+  # CloudWatch Dashboard
+  MLOpsDashboard:
+    Type: AWS::CloudWatch::Dashboard
+    Properties:
+      DashboardName: !Sub '${ProjectName}-${Environment}-dashboard'
+      DashboardBody: !Sub |
+        {
+          "widgets": [
+            {
+              "type": "metric",
+              "x": 0,
+              "y": 0,
+              "width": 12,
+              "height": 6,
+              "properties": {
+                "metrics": [
+                  [ "AWS/ApplicationELB", "RequestCount", "LoadBalancer", "${ApplicationName}-alb" ],
+                  [ ".", "TargetResponseTime", ".", "." ],
+                  [ ".", "HTTPCode_Target_2XX_Count", ".", "." ],
+                  [ ".", "HTTPCode_Target_4XX_Count", ".", "." ],
+                  [ ".", "HTTPCode_Target_5XX_Count", ".", "." ]
+                ],
+                "view": "timeSeries",
+                "stacked": false,
+                "region": "${AWS::Region}",
+                "title": "Application Load Balancer Metrics",
+                "period": 300
+              }
+            },
+            {
+              "type": "metric",
+              "x": 12,
+              "y": 0,
+              "width": 12,
+              "height": 6,
+              "properties": {
+                "metrics": [
+                  [ "AWS/ECS", "CPUUtilization", "ServiceName", "${ApplicationName}-service" ],
+                  [ ".", "MemoryUtilization", ".", "." ]
+                ],
+                "view": "timeSeries",
+                "stacked": false,
+                "region": "${AWS::Region}",
+                "title": "ECS Service Metrics",
+                "period": 300
+              }
+            },
+            {
+              "type": "log",
+              "x": 0,
+              "y": 6,
+              "width": 24,
+              "height": 6,
+              "properties": {
+                "query": "SOURCE '/aws/${ProjectName}/${Environment}/application'\n| fields @timestamp, @message\n| filter @message like /ERROR/\n| sort @timestamp desc\n| limit 100",
+                "region": "${AWS::Region}",
+                "title": "Recent Application Errors",
+                "view": "table"
+              }
+            },
+            {
+              "type": "log",
+              "x": 0,
+              "y": 12,
+              "width": 12,
+              "height": 6,
+              "properties": {
+                "query": "SOURCE '/aws/${ProjectName}/${Environment}/model-inference'\n| fields @timestamp, prediction_confidence, model_version\n| filter @message like /prediction/\n| stats avg(prediction_confidence) by bin(5m)",
+                "region": "${AWS::Region}",
+                "title": "Model Prediction Confidence",
+                "view": "table"
+              }
+            },
+            {
+              "type": "log",
+              "x": 12,
+              "y": 12,
+              "width": 12,
+              "height": 6,
+              "properties": {
+                "query": "SOURCE '/aws/${ProjectName}/${Environment}/model-metrics'\n| fields @timestamp, accuracy, precision, recall\n| filter @message like /performance/\n| sort @timestamp desc\n| limit 50",
+                "region": "${AWS::Region}",
+                "title": "Model Performance Metrics",
+                "view": "table"
+              }
+            },
+            {
+              "type": "log",
+              "x": 0,
+              "y": 18,
+              "width": 24,
+              "height": 6,
+              "properties": {
+                "query": "SOURCE '/aws/${ProjectName}/${Environment}/governance'\n| fields @timestamp, model_name, version, action, status\n| filter @message like /audit/\n| sort @timestamp desc\n| limit 100",
+                "region": "${AWS::Region}",
+                "title": "Model Governance Audit Trail",
+                "view": "table"
+              }
+            }
+          ]
+        }
+
+  # CloudWatch Alarms
+  HighErrorRateAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${ProjectName}-${Environment}-high-error-rate'
+      AlarmDescription: 'High error rate detected'
+      MetricName: HTTPCode_Target_5XX_Count
+      Namespace: AWS/ApplicationELB
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 10
+      ComparisonOperator: GreaterThanThreshold
+      AlarmActions:
+        - !Ref MLOpsAlarmTopic
+      Dimensions:
+        - Name: LoadBalancer
+          Value: !Sub '${ApplicationName}-alb'
+
+  HighResponseTimeAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${ProjectName}-${Environment}-high-response-time'
+      AlarmDescription: 'High response time detected'
+      MetricName: TargetResponseTime
+      Namespace: AWS/ApplicationELB
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 3
+      Threshold: 2.0
+      ComparisonOperator: GreaterThanThreshold
+      AlarmActions:
+        - !Ref MLOpsAlarmTopic
+      Dimensions:
+        - Name: LoadBalancer
+          Value: !Sub '${ApplicationName}-alb'
+
+  HighCPUAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${ProjectName}-${Environment}-high-cpu'
+      AlarmDescription: 'High CPU utilization'
+      MetricName: CPUUtilization
+      Namespace: AWS/ECS
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 3
+      Threshold: 80
+      ComparisonOperator: GreaterThanThreshold
+      AlarmActions:
+        - !Ref MLOpsAlarmTopic
+      Dimensions:
+        - Name: ServiceName
+          Value: !Sub '${ApplicationName}-service'
+
+  HighMemoryAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${ProjectName}-${Environment}-high-memory'
+      AlarmDescription: 'High memory utilization'
+      MetricName: MemoryUtilization
+      Namespace: AWS/ECS
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 3
+      Threshold: 85
+      ComparisonOperator: GreaterThanThreshold
+      AlarmActions:
+        - !Ref MLOpsAlarmTopic
+      Dimensions:
+        - Name: ServiceName
+          Value: !Sub '${ApplicationName}-service'
+
+  # Custom Metric Filters
+  ErrorLogMetricFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref ApplicationLogGroup
+      FilterPattern: 'ERROR'
+      MetricTransformations:
+        - MetricNamespace: !Sub '${ProjectName}/Application'
+          MetricName: ErrorCount
+          MetricValue: '1'
+          DefaultValue: 0
+
+  ModelPredictionMetricFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref ModelInferenceLogGroup
+      FilterPattern: '[timestamp, request_id, confidence_score]'
+      MetricTransformations:
+        - MetricNamespace: !Sub '${ProjectName}/Model'
+          MetricName: PredictionCount
+          MetricValue: '1'
+          DefaultValue: 0
+
+  LowConfidencePredictionFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref ModelInferenceLogGroup
+      FilterPattern: '[timestamp, request_id, confidence < 0.7]'
+      MetricTransformations:
+        - MetricNamespace: !Sub '${ProjectName}/Model'
+          MetricName: LowConfidencePredictions
+          MetricValue: '1'
+          DefaultValue: 0
+
+  # Model Drift Detection Alarm
+  ModelDriftAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${ProjectName}-${Environment}-model-drift'
+      AlarmDescription: 'Potential model drift detected - low confidence predictions'
+      MetricName: LowConfidencePredictions
+      Namespace: !Sub '${ProjectName}/Model'
+      Statistic: Sum
+      Period: 3600  # 1 hour
+      EvaluationPeriods: 2
+      Threshold: 50
+      ComparisonOperator: GreaterThanThreshold
+      AlarmActions:
+        - !Ref MLOpsAlarmTopic
+      TreatMissingData: notBreaching
+
+  # Governance Action Metric Filter
+  GovernanceActionFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref GovernanceLogGroup
+      FilterPattern: '[timestamp, model_name, action = "REJECTED"]'
+      MetricTransformations:
+        - MetricNamespace: !Sub '${ProjectName}/Governance'
+          MetricName: ModelRejections
+          MetricValue: '1'
+          DefaultValue: 0
+
+  # Model Rejection Alarm
+  ModelRejectionAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${ProjectName}-${Environment}-model-rejections'
+      AlarmDescription: 'Models being rejected due to governance failures'
+      MetricName: ModelRejections
+      Namespace: !Sub '${ProjectName}/Governance'
+      Statistic: Sum
+      Period: 3600
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      AlarmActions:
+        - !Ref MLOpsAlarmTopic
+      TreatMissingData: notBreaching
+
+Outputs:
+  DashboardURL:
+    Description: 'CloudWatch Dashboard URL'
+    Value: !Sub 'https://${AWS::Region}.console.aws.amazon.com/cloudwatch/home?region=${AWS::Region}#dashboards:name=${ProjectName}-${Environment}-dashboard'
+    Export:
+      Name: !Sub '${AWS::StackName}-DashboardURL'
+
+  SNSTopicArn:
+    Description: 'SNS Topic ARN for alerts'
+    Value: !Ref MLOpsAlarmTopic
+    Export:
+      Name: !Sub '${AWS::StackName}-SNSTopicArn'
+
+  ApplicationLogGroup:
+    Description: 'Application Log Group Name'
+    Value: !Ref ApplicationLogGroup
+    Export:
+      Name: !Sub '${AWS::StackName}-ApplicationLogGroup'
+
+  ModelInferenceLogGroup:
+    Description: 'Model Inference Log Group Name'
+    Value: !Ref ModelInferenceLogGroup
+    Export:
+      Name: !Sub '${AWS::StackName}-ModelInferenceLogGroup'
+
+  GovernanceLogGroup:
+    Description: 'Governance Log Group Name'
+    Value: !Ref GovernanceLogGroup
+    Export:
+      Name: !Sub '${AWS::StackName}-GovernanceLogGroup'
