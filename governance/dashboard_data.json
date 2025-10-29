@@ -1,0 +1,103 @@
+{
+  "timestamp": "2025-10-28T08:18:26.473059",
+  "statistics": {
+    "total_models": 1,
+    "audit_entries": 0,
+    "compliance_rate": 0.98,
+    "avg_accuracy": 0.6554878048780488
+  },
+  "metrics": {
+    "test": {
+      "accuracy": 0.6554878048780488,
+      "f1": 0.4321608040201005,
+      "roc_auc": 0.6681347656250001
+    },
+    "train": {
+      "val_roc_auc": 1.0,
+      "best_params": {
+        "n_estimators": 288,
+        "max_depth": 27,
+        "min_samples_split": 7,
+        "min_samples_leaf": 1
+      }
+    },
+    "mlflow": {
+      "best_cv_score": 0.6796059172455922,
+      "val_roc_auc": 1.0
+    }
+  },
+  "mlflow_run": {
+    "info": {
+      "artifact_uri": "file:///D:/Projects/MLOPS/mlops-project/mlruns/112401552925292377/27c86a05cf2948ffa459847a779730cc/artifacts",
+      "end_time": 1759951821430,
+      "entry_point_name": "",
+      "experiment_id": "112401552925292377",
+      "lifecycle_stage": "active",
+      "run_id": "27c86a05cf2948ffa459847a779730cc",
+      "run_name": "monumental-trout-347",
+      "source_name": "",
+      "source_type": 4,
+      "source_version": "",
+      "start_time": 1759951770167,
+      "status": 3,
+      "tags": [],
+      "user_id": "chris"
+    },
+    "params": {
+      "cv_folds": "5",
+      "max_depth": "27",
+      "min_samples_leaf": "1",
+      "min_samples_split": "7",
+      "n_estimators": "288",
+      "n_features": "9",
+      "n_samples_train": "2292",
+      "n_samples_val": "328",
+      "n_trials": "20"
+    },
+    "metrics": {
+      "best_cv_score": 0.6796059172455922,
+      "val_roc_auc": 1.0
+    }
+  },
+  "models": [
+    {
+      "name": "water-potability-classifier",
+      "version": "1",
+      "metadata": {
+        "aliases": [],
+        "creation_timestamp": 1759951821390,
+        "current_stage": "None",
+        "deployment_job_state": null,
+        "description": null,
+        "last_updated_timestamp": 1759951821390,
+        "metrics": null,
+        "model_id": "m-1ac80c90dda3447eb196d67cd293dd55",
+        "name": "water-potability-classifier",
+        "params": null,
+        "run_id": "27c86a05cf2948ffa459847a779730cc",
+        "run_link": null,
+        "source": "models:/m-1ac80c90dda3447eb196d67cd293dd55",
+        "status": "READY",
+        "status_message": null,
+        "storage_location": "file:///D:/Projects/MLOPS/mlops-project/mlruns/112401552925292377/models/m-1ac80c90dda3447eb196d67cd293dd55/artifacts",
+        "user_id": null,
+        "version": 1
+      }
+    }
+  ],
+  "audit_trail": [],
+  "test_metrics": {
+    "accuracy": 0.6554878048780488,
+    "f1": 0.4321608040201005,
+    "roc_auc": 0.6681347656250001
+  },
+  "train_metrics": {
+    "val_roc_auc": 1.0,
+    "best_params": {
+      "n_estimators": 288,
+      "max_depth": 27,
+      "min_samples_split": 7,
+      "min_samples_leaf": 1
+    }
+  }
+}

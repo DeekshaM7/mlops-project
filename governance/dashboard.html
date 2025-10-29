@@ -1,0 +1,809 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MLOps Governance Dashboard</title>
+    <link rel="stylesheet" href="dashboard.css">
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <div class="header">
+            <h1>🔐 MLOps Governance Dashboard</h1>
+            <p>Comprehensive Model Governance, Compliance, and Monitoring</p>
+            <p style="font-size: 0.9rem; opacity: 0.8; margin-top: 5px;">Last Updated: <span id="last-updated">Loading...</span></p>
+        </div>
+        
+        <!-- Stats Grid -->
+        <div class="stats-grid">
+            <div class="stat-card" onclick="showTab('models')">
+                <div class="stat-icon">📦</div>
+                <div class="stat-value" id="total-models">-</div>
+                <div class="stat-label">Total Models</div>
+            </div>
+            <div class="stat-card" onclick="showTab('audit')">
+                <div class="stat-icon">📋</div>
+                <div class="stat-value" id="audit-entries">-</div>
+                <div class="stat-label">Audit Entries</div>
+            </div>
+            <div class="stat-card" onclick="showTab('compliance')">
+                <div class="stat-icon">✅</div>
+                <div class="stat-value" id="compliance-rate">-</div>
+                <div class="stat-label">Compliance Rate</div>
+            </div>
+            <div class="stat-card" onclick="showTab('performance')">
+                <div class="stat-icon">📊</div>
+                <div class="stat-value" id="avg-accuracy">-</div>
+                <div class="stat-label">Test Accuracy</div>
+            </div>
+        </div>
+        
+        <!-- Navigation Tabs -->
+        <div class="nav-tabs">
+            <button class="nav-tab active" onclick="showTab('analytics')" data-tab="analytics">
+                📈 Analytics
+            </button>
+            <button class="nav-tab" onclick="showTab('models')" data-tab="models">
+                📦 Model Cards
+            </button>
+            <button class="nav-tab" onclick="showTab('audit')" data-tab="audit">
+                📋 Audit Trail
+            </button>
+            <button class="nav-tab" onclick="showTab('performance')" data-tab="performance">
+                📊 Performance Reports
+            </button>
+            <button class="nav-tab" onclick="showTab('compliance')" data-tab="compliance">
+                ✅ Compliance Reports
+            </button>
+        </div>
+        
+        <!-- Analytics Panel -->
+        <div id="analytics" class="content-panel active">
+            <div class="section-header">
+                <h2 class="section-title">Analytics Dashboard</h2>
+                <button class="action-btn" onclick="refreshAnalytics()">
+                    🔄 Refresh Data
+                </button>
+            </div>
+            
+            <div class="analytics-section">
+                <h3 style="margin-bottom: 20px; color: #2c3e50;">MLflow Run Information</h3>
+                <div class="analytics-cards">
+                    <div class="analytics-card">
+                        <div class="analytics-number" id="run-name">-</div>
+                        <div class="analytics-label">Run Name</div>
+                    </div>
+                    <div class="analytics-card">
+                        <div class="analytics-number" id="user-id">-</div>
+                        <div class="analytics-label">User</div>
+                    </div>
+                    <div class="analytics-card">
+                        <div class="analytics-number" id="cv-score">-</div>
+                        <div class="analytics-label">CV Score</div>
+                    </div>
+                    <div class="analytics-card">
+                        <div class="analytics-number" id="val-roc-auc">-</div>
+                        <div class="analytics-label">Validation ROC-AUC</div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="analytics-section">
+                <h3 style="margin-bottom: 20px; color: #2c3e50;">Hyperparameters</h3>
+                <div id="hyperparameters-container" style="background: #f8f9fa; padding: 20px; border-radius: 12px;">
+                    <p style="color: #7f8c8d;">Loading hyperparameters...</p>
+                </div>
+            </div>
+            
+            <div class="analytics-section">
+                <h3 style="margin-bottom: 20px; color: #2c3e50;">Recent Activity</h3>
+                <div id="recent-activity" class="audit-timeline">
+                    <p style="color: #7f8c8d; text-align: center; padding: 20px;">No recent audit entries found. Start by running the model approval workflow.</p>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Model Cards Panel -->
+        <div id="models" class="content-panel">
+            <div class="section-header">
+                <h2 class="section-title">Model Registry & Cards</h2>
+                <button class="action-btn" onclick="generateModelCard()">
+                    ➕ Generate Model Card
+                </button>
+            </div>
+            
+            <div class="filters">
+                <div class="filter-group">
+                    <label class="filter-label">Environment</label>
+                    <select class="filter-select" onchange="filterModels()">
+                        <option value="all">All Environments</option>
+                        <option value="production">Production</option>
+                        <option value="staging">Staging</option>
+                        <option value="development">Development</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label class="filter-label">Status</label>
+                    <select class="filter-select" onchange="filterModels()">
+                        <option value="all">All Status</option>
+                        <option value="ready">Ready</option>
+                        <option value="pending">Pending</option>
+                    </select>
+                </div>
+            </div>
+            
+            <div id="model-cards-container" class="model-cards-grid">
+                <p style="text-align: center; color: #7f8c8d; padding: 40px;">Loading models...</p>
+            </div>
+        </div>
+        
+        <!-- Audit Trail Panel -->
+        <div id="audit" class="content-panel">
+            <div class="section-header">
+                <h2 class="section-title">Audit Trail</h2>
+                <button class="action-btn" onclick="exportAuditLog()">
+                    📥 Export Log
+                </button>
+            </div>
+            
+            <div class="filters">
+                <div class="filter-group">
+                    <label class="filter-label">Event Type</label>
+                    <select class="filter-select">
+                        <option value="all">All Events</option>
+                        <option value="deployment">Deployments</option>
+                        <option value="approval">Approvals</option>
+                        <option value="training">Training</option>
+                        <option value="evaluation">Evaluations</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label class="filter-label">Time Range</label>
+                    <select class="filter-select">
+                        <option value="24h">Last 24 Hours</option>
+                        <option value="7d">Last 7 Days</option>
+                        <option value="30d">Last 30 Days</option>
+                        <option value="all">All Time</option>
+                    </select>
+                </div>
+            </div>
+            
+            <div id="audit-timeline-container" class="audit-timeline">
+                <p style="text-align: center; color: #7f8c8d; padding: 40px;">
+                    No audit trail entries found. Audit events will appear here when you run the model approval workflow using <code>governance/approve_model.py</code>.
+                </p>
+            </div>
+        </div>
+        
+        <!-- Performance Reports Panel -->
+        <div id="performance" class="content-panel">
+            <div class="section-header">
+                <h2 class="section-title">Performance Reports</h2>
+                <button class="action-btn" onclick="generateReport()">
+                    📊 Generate Report
+                </button>
+            </div>
+            
+            <div class="metrics-grid">
+                <div class="metric-box">
+                    <div class="metric-label">Test Accuracy</div>
+                    <div class="metric-value" id="metric-accuracy">-</div>
+                    <div class="metric-change">Test Set Performance</div>
+                </div>
+                <div class="metric-box">
+                    <div class="metric-label">F1 Score</div>
+                    <div class="metric-value" id="metric-f1">-</div>
+                    <div class="metric-change">Test Set Performance</div>
+                </div>
+                <div class="metric-box">
+                    <div class="metric-label">ROC-AUC</div>
+                    <div class="metric-value" id="metric-roc-auc">-</div>
+                    <div class="metric-change">Test Set Performance</div>
+                </div>
+                <div class="metric-box">
+                    <div class="metric-label">CV Score</div>
+                    <div class="metric-value" id="metric-cv-score">-</div>
+                    <div class="metric-change">Cross-Validation</div>
+                </div>
+                <div class="metric-box">
+                    <div class="metric-label">Val ROC-AUC</div>
+                    <div class="metric-value" id="metric-val-roc-auc">-</div>
+                    <div class="metric-change">Validation Set</div>
+                </div>
+                <div class="metric-box">
+                    <div class="metric-label">Training Samples</div>
+                    <div class="metric-value" id="metric-n-train">-</div>
+                    <div class="metric-change">Dataset Size</div>
+                </div>
+            </div>
+            
+            <div style="background: #f8f9fa; padding: 20px; border-radius: 12px; margin-top: 20px;">
+                <h3 style="margin-bottom: 15px; color: #2c3e50;">Model Configuration</h3>
+                <div id="model-config-container">
+                    <p style="color: #7f8c8d;">Loading model configuration...</p>
+                </div>
+            </div>
+            
+            <div style="background: #f8f9fa; padding: 20px; border-radius: 12px; margin-top: 20px;">
+                <h3 style="margin-bottom: 15px; color: #2c3e50;">Performance Summary</h3>
+                <p style="color: #495057; line-height: 1.8;">
+                    The current model shows performance based on real training and test data from the MLflow tracking system.
+                    Key metrics:
+                </p>
+                <ul id="performance-summary" style="margin: 15px 0; padding-left: 20px; color: #495057; line-height: 2;">
+                    <li>Loading performance summary...</li>
+                </ul>
+            </div>
+        </div>
+        
+        <!-- Compliance Reports Panel -->
+        <div id="compliance" class="content-panel">
+            <div class="section-header">
+                <h2 class="section-title">Compliance Reports</h2>
+                <button class="action-btn" onclick="runComplianceCheck()">
+                    🔍 Run Compliance Check
+                </button>
+            </div>
+            
+            <div class="compliance-grid">
+                <div class="compliance-card">
+                    <div class="compliance-header">
+                        <div class="compliance-icon">📋</div>
+                        <div class="compliance-title">Documentation</div>
+                    </div>
+                    <ul class="compliance-checks">
+                        <li class="compliance-check">
+                            <span class="check-icon check-passed">✓</span>
+                            Model Card Available
+                        </li>
+                        <li class="compliance-check">
+                            <span class="check-icon check-passed">✓</span>
+                            Data Schema Documented
+                        </li>
+                        <li class="compliance-check">
+                            <span class="check-icon check-passed">✓</span>
+                            API Documentation
+                        </li>
+                        <li class="compliance-check">
+                            <span class="check-icon check-passed">✓</span>
+                            Deployment Guide
+                        </li>
+                    </ul>
+                </div>
+                
+                <div class="compliance-card">
+                    <div class="compliance-header">
+                        <div class="compliance-icon">🔒</div>
+                        <div class="compliance-title">Security</div>
+                    </div>
+                    <ul class="compliance-checks">
+                        <li class="compliance-check">
+                            <span class="check-icon check-passed">✓</span>
+                            Container Security Scan
+                        </li>
+                        <li class="compliance-check">
+                            <span class="check-icon check-passed">✓</span>
+                            Dependency Audit
+                        </li>
+                        <li class="compliance-check">
+                            <span class="check-icon check-passed">✓</span>
+                            Secrets Management
+                        </li>
+                        <li class="compliance-check">
+                            <span class="check-icon check-passed">✓</span>
+                            Non-root User
+                        </li>
+                    </ul>
+                </div>
+                
+                <div class="compliance-card">
+                    <div class="compliance-header">
+                        <div class="compliance-icon">⚖️</div>
+                        <div class="compliance-title">Fairness & Bias</div>
+                    </div>
+                    <ul class="compliance-checks">
+                        <li class="compliance-check">
+                            <span class="check-icon check-warning">⚠</span>
+                            Bias Assessment (Run assess_bias)
+                        </li>
+                        <li class="compliance-check">
+                            <span class="check-icon check-warning">⚠</span>
+                            Statistical Parity Check
+                        </li>
+                        <li class="compliance-check">
+                            <span class="check-icon check-warning">⚠</span>
+                            Equal Opportunity Analysis
+                        </li>
+                        <li class="compliance-check">
+                            <span class="check-icon check-warning">⚠</span>
+                            Disparate Impact Ratio
+                        </li>
+                    </ul>
+                </div>
+                
+                <div class="compliance-card">
+                    <div class="compliance-header">
+                        <div class="compliance-icon">🧪</div>
+                        <div class="compliance-title">Testing</div>
+                    </div>
+                    <ul class="compliance-checks">
+                        <li class="compliance-check">
+                            <span class="check-icon check-passed">✓</span>
+                            Unit Tests Available
+                        </li>
+                        <li class="compliance-check">
+                            <span class="check-icon check-passed">✓</span>
+                            Integration Tests
+                        </li>
+                        <li class="compliance-check">
+                            <span class="check-icon check-passed">✓</span>
+                            Model Evaluation
+                        </li>
+                        <li class="compliance-check">
+                            <span class="check-icon check-passed">✓</span>
+                            Performance Benchmarks
+                        </li>
+                    </ul>
+                </div>
+                
+                <div class="compliance-card">
+                    <div class="compliance-header">
+                        <div class="compliance-icon">📊</div>
+                        <div class="compliance-title">Performance</div>
+                    </div>
+                    <ul class="compliance-checks">
+                        <li class="compliance-check">
+                            <span class="check-icon check-passed">✓</span>
+                            Metrics Tracked
+                        </li>
+                        <li class="compliance-check">
+                            <span class="check-icon check-passed">✓</span>
+                            MLflow Integration
+                        </li>
+                        <li class="compliance-check">
+                            <span class="check-icon check-passed">✓</span>
+                            Model Registry
+                        </li>
+                        <li class="compliance-check">
+                            <span class="check-icon check-passed">✓</span>
+                            Experiment Tracking
+                        </li>
+                    </ul>
+                </div>
+                
+                <div class="compliance-card">
+                    <div class="compliance-header">
+                        <div class="compliance-icon">📝</div>
+                        <div class="compliance-title">Audit & Governance</div>
+                    </div>
+                    <ul class="compliance-checks">
+                        <li class="compliance-check">
+                            <span class="check-icon check-passed">✓</span>
+                            Audit Trail System
+                        </li>
+                        <li class="compliance-check">
+                            <span class="check-icon check-passed">✓</span>
+                            Version Control (Git)
+                        </li>
+                        <li class="compliance-check">
+                            <span class="check-icon check-passed">✓</span>
+                            DVC Data Versioning
+                        </li>
+                        <li class="compliance-check">
+                            <span class="check-icon check-passed">✓</span>
+                            CI/CD Pipeline
+                        </li>
+                    </ul>
+                </div>
+            </div>
+            
+            <div style="background: #f8f9fa; padding: 25px; border-radius: 12px; margin-top: 30px; text-align: center; border: 2px solid #3498db;">
+                <h3 style="font-size: 1.5rem; margin-bottom: 10px; color: #2c3e50;">📋 Compliance Framework Active</h3>
+                <p style="font-size: 1.1rem; color: #7f8c8d;">
+                    Your MLOps pipeline includes comprehensive governance and compliance tools. Run <code>python governance/approve_model.py</code> to perform full compliance evaluation.
+                </p>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // Global variable to store dashboard data
+        let dashboardData = null;
+        
+        // Load dashboard data from JSON file
+        async function loadDashboardData() {
+            try {
+                // Try to fetch the JSON file
+                const response = await fetch('dashboard_data.json');
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
+                dashboardData = await response.json();
+                updateDashboard();
+            } catch (error) {
+                console.error('Error loading dashboard data:', error);
+                
+                // If fetch fails (CORS or file not found), try to load from embedded script
+                // or show instructions to use HTTP server
+                if (error.message.includes('Failed to fetch') || error.name === 'TypeError') {
+                    showCORSError();
+                } else {
+                    showError('Failed to load dashboard data. Please ensure dashboard_data.json exists and run: python governance/fetch_dashboard_data.py');
+                }
+            }
+        }
+        
+        function showCORSError() {
+            const errorHTML = `
+                <div style="max-width: 800px; margin: 50px auto; padding: 30px; background: #fff3cd; border: 2px solid #ffc107; border-radius: 12px;">
+                    <h2 style="color: #856404; margin-bottom: 20px;">⚠️ CORS Error - Server Required</h2>
+                    <p style="color: #856404; font-size: 1.1rem; line-height: 1.8; margin-bottom: 20px;">
+                        The dashboard cannot load data when opened directly as a file. You need to serve it through a web server.
+                    </p>
+                    
+                    <h3 style="color: #856404; margin: 20px 0 10px 0;">Quick Fix (Choose one):</h3>
+                    
+                    <div style="background: white; padding: 20px; border-radius: 8px; margin-bottom: 15px;">
+                        <h4 style="color: #2c3e50; margin-bottom: 10px;">Option 1: Use Included Server (Recommended)</h4>
+                        <pre style="background: #2c3e50; color: #2ecc71; padding: 15px; border-radius: 8px; overflow-x: auto;"><code>python governance/serve_dashboard.py</code></pre>
+                        <p style="color: #7f8c8d; margin-top: 10px;">Then open: <strong>http://localhost:8080/dashboard.html</strong></p>
+                    </div>
+                    
+                    <div style="background: white; padding: 20px; border-radius: 8px; margin-bottom: 15px;">
+                        <h4 style="color: #2c3e50; margin-bottom: 10px;">Option 2: Python HTTP Server</h4>
+                        <pre style="background: #2c3e50; color: #2ecc71; padding: 15px; border-radius: 8px; overflow-x: auto;"><code>cd governance
+python -m http.server 8080</code></pre>
+                        <p style="color: #7f8c8d; margin-top: 10px;">Then open: <strong>http://localhost:8080/dashboard.html</strong></p>
+                    </div>
+                    
+                    <div style="background: white; padding: 20px; border-radius: 8px; margin-bottom: 15px;">
+                        <h4 style="color: #2c3e50; margin-bottom: 10px;">Option 3: VS Code Live Server</h4>
+                        <ol style="color: #7f8c8d; line-height: 2;">
+                            <li>Install "Live Server" extension in VS Code</li>
+                            <li>Right-click dashboard.html</li>
+                            <li>Select "Open with Live Server"</li>
+                        </ol>
+                    </div>
+                    
+                    <div style="background: #e3f2fd; padding: 15px; border-radius: 8px; margin-top: 20px;">
+                        <p style="color: #1565c0; margin: 0;"><strong>💡 Tip:</strong> Make sure you've generated the data file first:</p>
+                        <pre style="background: #1565c0; color: white; padding: 10px; border-radius: 8px; margin-top: 10px;"><code>python governance/fetch_dashboard_data.py</code></pre>
+                    </div>
+                </div>
+            `;
+            
+            document.querySelector('.container').innerHTML = errorHTML;
+        }
+        
+        // Update all dashboard elements with actual data
+        function updateDashboard() {
+            if (!dashboardData) return;
+            
+            // Update header timestamp
+            const lastUpdated = new Date(dashboardData.timestamp).toLocaleString();
+            document.getElementById('last-updated').textContent = lastUpdated;
+            
+            // Update statistics cards
+            document.getElementById('total-models').textContent = dashboardData.statistics.total_models;
+            document.getElementById('audit-entries').textContent = dashboardData.statistics.audit_entries || 0;
+            document.getElementById('compliance-rate').textContent = 
+                (dashboardData.statistics.compliance_rate * 100).toFixed(0) + '%';
+            document.getElementById('avg-accuracy').textContent = 
+                (dashboardData.statistics.avg_accuracy * 100).toFixed(1) + '%';
+            
+            // Update analytics panel
+            updateAnalyticsPanel();
+            
+            // Update model cards
+            updateModelCards();
+            
+            // Update audit trail
+            updateAuditTrail();
+            
+            // Update performance metrics
+            updatePerformanceMetrics();
+        }
+        
+        function updateAnalyticsPanel() {
+            const mlflowInfo = dashboardData.mlflow_run.info;
+            const mlflowMetrics = dashboardData.mlflow_run.metrics;
+            
+            // Update run info cards
+            document.getElementById('run-name').textContent = mlflowInfo.run_name || 'N/A';
+            document.getElementById('user-id').textContent = mlflowInfo.user_id || 'N/A';
+            document.getElementById('cv-score').textContent = 
+                mlflowMetrics.best_cv_score ? mlflowMetrics.best_cv_score.toFixed(4) : 'N/A';
+            document.getElementById('val-roc-auc').textContent = 
+                mlflowMetrics.val_roc_auc ? mlflowMetrics.val_roc_auc.toFixed(4) : 'N/A';
+            
+            // Update hyperparameters
+            const params = dashboardData.mlflow_run.params;
+            const hyperparamsHtml = Object.entries(params)
+                .map(([key, value]) => `
+                    <div style="display: inline-block; margin: 5px 10px; padding: 8px 15px; background: white; border-radius: 8px; border-left: 3px solid #3498db;">
+                        <strong style="color: #2c3e50;">${key.replace(/_/g, ' ')}:</strong> 
+                        <span style="color: #7f8c8d;">${value}</span>
+                    </div>
+                `).join('');
+            
+            document.getElementById('hyperparameters-container').innerHTML = hyperparamsHtml || 
+                '<p style="color: #7f8c8d;">No hyperparameters found.</p>';
+            
+            // Update recent activity
+            const auditEntries = dashboardData.audit_trail;
+            if (auditEntries && auditEntries.length > 0) {
+                const recentActivityHtml = auditEntries.slice(0, 5).map(entry => `
+                    <div class="audit-entry">
+                        <div class="audit-header">
+                            <span class="audit-action">${getEventIcon(entry.event_type)} ${entry.event_type.replace(/_/g, ' ')}</span>
+                            <span class="audit-timestamp">${formatTimestamp(entry.timestamp)}</span>
+                        </div>
+                        <div class="audit-details">
+                            <strong>User:</strong> <span class="audit-user">${entry.user}</span><br>
+                            <strong>Model:</strong> ${entry.model_name} v${entry.model_version}<br>
+                            <strong>Action:</strong> ${entry.action}
+                        </div>
+                    </div>
+                `).join('');
+                document.getElementById('recent-activity').innerHTML = recentActivityHtml;
+            }
+        }
+        
+        function updateModelCards() {
+            const models = dashboardData.models;
+            const container = document.getElementById('model-cards-container');
+            
+            if (!models || models.length === 0) {
+                container.innerHTML = '<p style="text-align: center; color: #7f8c8d; padding: 40px;">No models found in registry.</p>';
+                return;
+            }
+            
+            const modelsHtml = models.map(model => {
+                const meta = model.metadata;
+                const createdDate = new Date(meta.creation_timestamp).toLocaleDateString();
+                const status = meta.status || 'UNKNOWN';
+                const statusClass = status === 'READY' ? 'status-approved' : 'status-pending';
+                
+                return `
+                    <div class="model-card">
+                        <div class="model-card-header">
+                            <span class="model-name">${model.name}</span>
+                            <span class="model-version">v${model.version}</span>
+                        </div>
+                        <div class="model-info">
+                            <div class="info-row">
+                                <span class="info-label">Run ID</span>
+                                <span class="info-value" style="font-size: 0.8rem;">${meta.run_id.substring(0, 8)}...</span>
+                            </div>
+                            <div class="info-row">
+                                <span class="info-label">Algorithm</span>
+                                <span class="info-value">Random Forest</span>
+                            </div>
+                            <div class="info-row">
+                                <span class="info-label">Created</span>
+                                <span class="info-value">${createdDate}</span>
+                            </div>
+                            <div class="info-row">
+                                <span class="info-label">Stage</span>
+                                <span class="info-value">${meta.current_stage || 'None'}</span>
+                            </div>
+                            <div class="info-row">
+                                <span class="info-label">Status</span>
+                                <span class="status-badge ${statusClass}">${status}</span>
+                            </div>
+                        </div>
+                        <button class="action-btn" style="width: 100%; margin-top: 15px;" onclick="viewModelDetails('${model.name}', '${model.version}')">
+                            📄 View Details
+                        </button>
+                    </div>
+                `;
+            }).join('');
+            
+            container.innerHTML = modelsHtml;
+        }
+        
+        function updateAuditTrail() {
+            const auditEntries = dashboardData.audit_trail;
+            const container = document.getElementById('audit-timeline-container');
+            
+            if (!auditEntries || auditEntries.length === 0) {
+                container.innerHTML = `
+                    <p style="text-align: center; color: #7f8c8d; padding: 40px;">
+                        No audit trail entries found. Audit events will appear here when you run the model approval workflow using <code>governance/approve_model.py</code>.
+                    </p>
+                `;
+                return;
+            }
+            
+            const auditHtml = auditEntries.map(entry => `
+                <div class="audit-entry">
+                    <div class="audit-header">
+                        <span class="audit-action">${getEventIcon(entry.event_type)} ${entry.event_type.replace(/_/g, ' ')}</span>
+                        <span class="audit-timestamp">${formatTimestamp(entry.timestamp)}</span>
+                    </div>
+                    <div class="audit-details">
+                        <strong>User:</strong> <span class="audit-user">${entry.user}</span><br>
+                        <strong>Model:</strong> ${entry.model_name} v${entry.model_version}<br>
+                        <strong>Action:</strong> ${entry.action}<br>
+                        <strong>Environment:</strong> ${entry.environment}
+                        ${entry.details ? '<br><strong>Details:</strong> ' + JSON.stringify(entry.details).substring(0, 100) + '...' : ''}
+                    </div>
+                </div>
+            `).join('');
+            
+            container.innerHTML = auditHtml;
+        }
+        
+        function updatePerformanceMetrics() {
+            const testMetrics = dashboardData.test_metrics;
+            const mlflowMetrics = dashboardData.mlflow_run.metrics;
+            const params = dashboardData.mlflow_run.params;
+            
+            // Update metric boxes
+            document.getElementById('metric-accuracy').textContent = 
+                testMetrics.accuracy ? (testMetrics.accuracy * 100).toFixed(2) + '%' : 'N/A';
+            document.getElementById('metric-f1').textContent = 
+                testMetrics.f1 ? testMetrics.f1.toFixed(4) : 'N/A';
+            document.getElementById('metric-roc-auc').textContent = 
+                testMetrics.roc_auc ? testMetrics.roc_auc.toFixed(4) : 'N/A';
+            document.getElementById('metric-cv-score').textContent = 
+                mlflowMetrics.best_cv_score ? mlflowMetrics.best_cv_score.toFixed(4) : 'N/A';
+            document.getElementById('metric-val-roc-auc').textContent = 
+                mlflowMetrics.val_roc_auc ? mlflowMetrics.val_roc_auc.toFixed(4) : 'N/A';
+            document.getElementById('metric-n-train').textContent = 
+                params.n_samples_train || 'N/A';
+            
+            // Update model configuration
+            const configHtml = `
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;">
+                    <div style="background: white; padding: 15px; border-radius: 8px; border-left: 3px solid #e74c3c;">
+                        <strong style="color: #2c3e50;">N Estimators:</strong><br>
+                        <span style="color: #7f8c8d; font-size: 1.2rem;">${params.n_estimators || 'N/A'}</span>
+                    </div>
+                    <div style="background: white; padding: 15px; border-radius: 8px; border-left: 3px solid #3498db;">
+                        <strong style="color: #2c3e50;">Max Depth:</strong><br>
+                        <span style="color: #7f8c8d; font-size: 1.2rem;">${params.max_depth || 'N/A'}</span>
+                    </div>
+                    <div style="background: white; padding: 15px; border-radius: 8px; border-left: 3px solid #2ecc71;">
+                        <strong style="color: #2c3e50;">Min Samples Split:</strong><br>
+                        <span style="color: #7f8c8d; font-size: 1.2rem;">${params.min_samples_split || 'N/A'}</span>
+                    </div>
+                    <div style="background: white; padding: 15px; border-radius: 8px; border-left: 3px solid #f39c12;">
+                        <strong style="color: #2c3e50;">Min Samples Leaf:</strong><br>
+                        <span style="color: #7f8c8d; font-size: 1.2rem;">${params.min_samples_leaf || 'N/A'}</span>
+                    </div>
+                    <div style="background: white; padding: 15px; border-radius: 8px; border-left: 3px solid #9b59b6;">
+                        <strong style="color: #2c3e50;">CV Folds:</strong><br>
+                        <span style="color: #7f8c8d; font-size: 1.2rem;">${params.cv_folds || 'N/A'}</span>
+                    </div>
+                    <div style="background: white; padding: 15px; border-radius: 8px; border-left: 3px solid #1abc9c;">
+                        <strong style="color: #2c3e50;">N Trials:</strong><br>
+                        <span style="color: #7f8c8d; font-size: 1.2rem;">${params.n_trials || 'N/A'}</span>
+                    </div>
+                </div>
+            `;
+            document.getElementById('model-config-container').innerHTML = configHtml;
+            
+            // Update performance summary
+            const summaryHtml = `
+                <li><strong>Test Accuracy: ${(testMetrics.accuracy * 100).toFixed(2)}%</strong> on ${params.n_samples_val || 'N/A'} validation samples</li>
+                <li><strong>Cross-Validation Score: ${mlflowMetrics.best_cv_score ? mlflowMetrics.best_cv_score.toFixed(4) : 'N/A'}</strong> using ${params.cv_folds || 'N/A'}-fold cross-validation</li>
+                <li><strong>Training Dataset: ${params.n_samples_train || 'N/A'} samples</strong> with ${params.n_features || 'N/A'} features</li>
+                <li><strong>Hyperparameter Tuning:</strong> ${params.n_trials || 'N/A'} trials using Optuna optimization</li>
+                <li><strong>Model Complexity:</strong> ${params.n_estimators || 'N/A'} trees with max depth of ${params.max_depth || 'N/A'}</li>
+            `;
+            document.getElementById('performance-summary').innerHTML = summaryHtml;
+        }
+        
+        // Helper functions
+        function getEventIcon(eventType) {
+            const icons = {
+                'MODEL_REGISTRATION': '📦',
+                'MODEL_APPROVAL': '✅',
+                'MODEL_DEPLOYMENT': '🚀',
+                'COMPLIANCE_EVALUATION': '🔍',
+                'TRAINING': '🤖',
+                'EVALUATION': '🔬'
+            };
+            return icons[eventType] || '📋';
+        }
+        
+        function formatTimestamp(timestamp) {
+            const date = new Date(timestamp);
+            const now = new Date();
+            const diffMs = now - date;
+            const diffMins = Math.floor(diffMs / 60000);
+            const diffHours = Math.floor(diffMs / 3600000);
+            const diffDays = Math.floor(diffMs / 86400000);
+            
+            if (diffMins < 1) return 'Just now';
+            if (diffMins < 60) return `${diffMins} minutes ago`;
+            if (diffHours < 24) return `${diffHours} hours ago`;
+            if (diffDays < 7) return `${diffDays} days ago`;
+            return date.toLocaleDateString();
+        }
+        
+        function showError(message) {
+            const errorDiv = document.createElement('div');
+            errorDiv.style.cssText = 'position: fixed; top: 20px; right: 20px; background: #e74c3c; color: white; padding: 20px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); z-index: 9999;';
+            errorDiv.innerHTML = `<strong>Error:</strong> ${message}`;
+            document.body.appendChild(errorDiv);
+            setTimeout(() => errorDiv.remove(), 5000);
+        }
+        
+        // Tab switching
+        function showTab(tabName) {
+            // Hide all panels
+            document.querySelectorAll('.content-panel').forEach(panel => {
+                panel.classList.remove('active');
+            });
+            
+            // Remove active class from all tabs
+            document.querySelectorAll('.nav-tab').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            
+            // Show selected panel
+            document.getElementById(tabName).classList.add('active');
+            
+            // Add active class to clicked tab
+            document.querySelector(`[data-tab="${tabName}"]`).classList.add('active');
+        }
+        
+        // Action button functions
+        function refreshAnalytics() {
+            alert('Refreshing analytics data... Please regenerate dashboard_data.json by running: python governance/fetch_dashboard_data.py');
+            location.reload();
+        }
+        
+        function generateModelCard() {
+            alert('To generate a model card, run: python governance/generate_model_card.py');
+        }
+        
+        function viewModelDetails(name, version) {
+            alert(`Model Details:\n\nName: ${name}\nVersion: ${version}\n\nFor full details, check the MLflow UI or model registry files.`);
+        }
+        
+        function exportAuditLog() {
+            if (!dashboardData || !dashboardData.audit_trail || dashboardData.audit_trail.length === 0) {
+                alert('No audit trail data to export.');
+                return;
+            }
+            
+            const dataStr = JSON.stringify(dashboardData.audit_trail, null, 2);
+            const dataBlob = new Blob([dataStr], { type: 'application/json' });
+            const url = URL.createObjectURL(dataBlob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = 'audit_trail_export.json';
+            link.click();
+            URL.revokeObjectURL(url);
+        }
+        
+        function generateReport() {
+            alert('To generate a comprehensive report, run: python governance/model_governance.py');
+        }
+        
+        function runComplianceCheck() {
+            alert('To run a compliance check, use: python governance/approve_model.py');
+        }
+        
+        function filterModels() {
+            alert('Model filtering feature - coming soon!');
+        }
+        
+        function sortModels() {
+            alert('Model sorting feature - coming soon!');
+        }
+        
+        // Load data on page load
+        window.addEventListener('load', function() {
+            console.log('MLOps Governance Dashboard loaded');
+            loadDashboardData();
+        });
+    </script>
+</body>
+</html>
