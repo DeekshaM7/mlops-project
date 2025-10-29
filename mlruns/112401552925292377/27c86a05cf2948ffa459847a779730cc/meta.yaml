@@ -1,0 +1,14 @@
+artifact_uri: file:///D:/Projects/MLOPS/mlops-project/mlruns/112401552925292377/27c86a05cf2948ffa459847a779730cc/artifacts
+end_time: 1759951821430
+entry_point_name: ''
+experiment_id: '112401552925292377'
+lifecycle_stage: active
+run_id: 27c86a05cf2948ffa459847a779730cc
+run_name: monumental-trout-347
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1759951770167
+status: 3
+tags: []
+user_id: chris
