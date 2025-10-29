@@ -1,8 +1,5 @@
 from typing import List
 
-from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse
-from fastapi.middleware.cors import CORSMiddleware
 from flask import Flask, request, jsonify, send_file, abort
 import os
 import joblib
