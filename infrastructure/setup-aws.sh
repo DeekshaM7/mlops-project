@@ -4,12 +4,26 @@
 set -e
 
 # Configuration
-AWS_REGION="us-east-1"
+AWS_REGION="${AWS_REGION}"  # Can be overridden with environment variable
 PROJECT_NAME="water-quality-ml"
 S3_BUCKET="${PROJECT_NAME}-dvc-data-$(date +%s)"
 ECR_REPO="${PROJECT_NAME}"
 
 echo "🚀 Setting up AWS infrastructure for MLOps pipeline..."
+echo "📍 Region: $AWS_REGION"
+echo "📦 Project: $PROJECT_NAME"
+echo ""
+
+# Verify AWS credentials are configured
+if ! aws sts get-caller-identity &> /dev/null; then
+    echo "❌ Error: AWS credentials not configured!"
+    echo "Please run 'aws configure' first."
+    exit 1
+fi
+
+echo "✅ AWS credentials verified"
+echo "Account: $(aws sts get-caller-identity --query Account --output text)"
+echo ""
 
 # 1. Create S3 bucket for DVC data storage
 echo "📦 Creating S3 bucket: $S3_BUCKET"
