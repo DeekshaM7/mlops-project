@@ -1,9 +1,8 @@
-from typing import List
+
 
 from flask import Flask, request, jsonify, send_file, abort
 import os
 import joblib
-import numpy as np
 import pandas as pd
 
 app = Flask(__name__)

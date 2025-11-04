@@ -1,5 +1,4 @@
 import os
-import subprocess
 
 
 def test_preprocess_script_smoke():
