@@ -52,27 +52,35 @@ jobs:
 
       - name: Deploy via SSM Run Command
         run: |
-          aws ssm send-command \
-            --instance-ids "${{ steps.vars.outputs.instance_id }}" \
-            --document-name "AWS-RunShellScript" \
-            --comment "Deploy ${{ env.ECR_REPOSITORY }}:${{ github.event.inputs.image_tag }} to ${{ github.event.inputs.environment }}" \
+          # Build SSM command dynamically (S3 output is optional)
+          SSM_CMD="aws ssm send-command \
+            --instance-ids \"${{ steps.vars.outputs.instance_id }}\" \
+            --document-name \"AWS-RunShellScript\" \
+            --comment \"Deploy ${{ env.ECR_REPOSITORY }}:${{ github.event.inputs.image_tag }} to ${{ github.event.inputs.environment }}\" \
             --parameters 'commands=[
-              "echo \"Starting deployment...\"",
-              "cd ${{ steps.vars.outputs.app_dir }}",
-              "aws ecr get-login-password --region ${{ env.AWS_REGION }} | docker login --username AWS --password-stdin ${{ secrets.ECR_REGISTRY }}",
-              "docker pull ${{ steps.vars.outputs.image_uri }}",
-              "docker stop water-quality-app || true",
-              "docker rm water-quality-app || true",
-              "docker run -d --name water-quality-app --restart unless-stopped -p ${{ steps.vars.outputs.app_port }}:8000 -e AWS_REGION=${{ env.AWS_REGION }} ${{ steps.vars.outputs.image_uri }}",
-              "sleep 10",
-              "curl -f http://localhost:${{ steps.vars.outputs.app_port }}/ || exit 1",
-              "echo \"Deployment successful!\""
+              \"echo \\\"Starting deployment...\\\"\",
+              \"cd ${{ steps.vars.outputs.app_dir }}\",
+              \"aws ecr get-login-password --region ${{ env.AWS_REGION }} | docker login --username AWS --password-stdin ${{ secrets.ECR_REGISTRY }}\",
+              \"docker pull ${{ steps.vars.outputs.image_uri }}\",
+              \"docker stop water-quality-app || true\",
+              \"docker rm water-quality-app || true\",
+              \"docker run -d --name water-quality-app --restart unless-stopped -p ${{ steps.vars.outputs.app_port }}:8000 -e AWS_REGION=${{ env.AWS_REGION }} ${{ steps.vars.outputs.image_uri }}\",
+              \"sleep 10\",
+              \"curl -f http://localhost:${{ steps.vars.outputs.app_port }}/ || exit 1\",
+              \"echo \\\"Deployment successful!\\\"\"
             ]' \
-            --output-s3-bucket-name "${{ secrets.SSM_OUTPUT_BUCKET }}" \
-            --output-s3-key-prefix "ssm-logs/${{ github.event.inputs.environment }}" \
-            --cloud-watch-output-config '{"CloudWatchLogGroupName":"/aws/ssm/mlops-deploy","CloudWatchOutputEnabled":true}' \
-            --query 'Command.CommandId' \
-            --output text > command_id.txt
+            --cloud-watch-output-config '{\"CloudWatchLogGroupName\":\"/aws/ssm/mlops-deploy\",\"CloudWatchOutputEnabled\":true}'"
+          
+          # Add S3 output if bucket is configured
+          if [ -n "${{ secrets.SSM_OUTPUT_BUCKET }}" ]; then
+            SSM_CMD="$SSM_CMD --output-s3-bucket-name \"${{ secrets.SSM_OUTPUT_BUCKET }}\" --output-s3-key-prefix \"ssm-logs/${{ github.event.inputs.environment }}\""
+          fi
+          
+          # Add query and output
+          SSM_CMD="$SSM_CMD --query 'Command.CommandId' --output text"
+          
+          # Execute command
+          eval "$SSM_CMD" > command_id.txt
           
           COMMAND_ID=$(cat command_id.txt)
           echo "Command ID: $COMMAND_ID"
