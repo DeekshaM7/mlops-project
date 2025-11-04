@@ -23,7 +23,7 @@ jobs:
     name: Deploy to EC2 via AWS Systems Manager
     runs-on: ubuntu-latest
     environment: ${{ github.event.inputs.environment }}
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -38,7 +38,10 @@ jobs:
       - name: Set deployment variables
         id: vars
         run: |
-          if [ "${{ github.event.inputs.environment }}" == "production" ]; then
+          env="${{ github.event.inputs.environment }}"
+          tag="${{ github.event.inputs.image_tag }}"
+
+          if [ "$env" = "production" ]; then
             echo "instance_id=${{ secrets.PROD_EC2_INSTANCE_ID }}" >> $GITHUB_OUTPUT
             echo "app_dir=/opt/mlops-production" >> $GITHUB_OUTPUT
             echo "app_port=8000" >> $GITHUB_OUTPUT
@@ -47,38 +50,51 @@ jobs:
             echo "app_dir=/opt/mlops-staging" >> $GITHUB_OUTPUT
             echo "app_port=8000" >> $GITHUB_OUTPUT
           fi
-          
-          echo "image_uri=${{ secrets.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:${{ github.event.inputs.image_tag }}" >> $GITHUB_OUTPUT
 
-      # Resolve a valid EC2 instance ID (from secret or by tag)
+          # ECR registry must be provided via secrets (ECR_REGISTRY or ECR_URI)
+          if [ -n "${{ secrets.ECR_REGISTRY }}" ]; then
+            echo "image_uri=${{ secrets.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:${tag}" >> $GITHUB_OUTPUT
+          else
+            echo "image_uri=${{ secrets.ECR_URI }}/${{ env.ECR_REPOSITORY }}:${tag}" >> $GITHUB_OUTPUT
+
       - name: Resolve EC2 instance ID
         id: resolve-instance
         run: |
-          set -e
+          set -euo pipefail
           CANDIDATE_ID="${{ steps.vars.outputs.instance_id }}"
+
+          echo "Debug: candidate instance id from secrets: '$CANDIDATE_ID'"
+
           RESOLVED_ID=""
 
-          # Validate provided instance id format (i-xxxxxxxx or i-xxxxxxxxxxxxxxxxx)
-          if [[ "$CANDIDATE_ID" =~ ^i-([0-9a-f]{8}|[0-9a-f]{17})$ ]]; then
+          # Validate provided instance id format (i-123...)
+          if [[ -n "$CANDIDATE_ID" && "$CANDIDATE_ID" =~ ^i-([0-9a-f]{8}|[0-9a-f]{17})$ ]]; then
             RESOLVED_ID="$CANDIDATE_ID"
+            echo "Using provided instance id: $RESOLVED_ID"
           else
-            echo "Provided instance_id is empty or invalid; attempting to resolve by tag..."
-            if [ "${{ github.event.inputs.environment }}" == "production" ]; then
+            echo "Provided instance_id empty/invalid; attempting to resolve by tag..."
+            if [ "${{ github.event.inputs.environment }}" = "production" ]; then
               TAG_NAME="${{ secrets.PROD_EC2_TAG_NAME }}"
               [ -z "$TAG_NAME" ] && TAG_NAME="mlops-production"
             else
               TAG_NAME="${{ secrets.STAGING_EC2_TAG_NAME }}"
               [ -z "$TAG_NAME" ] && TAG_NAME="mlops-staging"
             fi
-            echo "Using tag Name=$TAG_NAME to find a running instance in ${{ env.AWS_REGION }}"
-            RESOLVED_ID=$(aws ec2 describe-instances \
-              --region "${{ env.AWS_REGION }}" \
-              --filters "Name=tag:Name,Values=$TAG_NAME" "Name=instance-state-name,Values=running" \
-              --query 'Reservations[0].Instances[0].InstanceId' \
-              --output text 2>/dev/null || echo "")
 
-            # aws may return 'None' if not found
-            if [ "$RESOLVED_ID" = "None" ]; then RESOLVED_ID=""; fi
+            echo "Looking for running instance with tag Name=$TAG_NAME in region $AWS_REGION"
+
+            # Get the first running instance id for the tag (if multiple, pick first)
+            RESOLVED_ID=$(aws ec2 describe-instances \
+              --region "$AWS_REGION" \
+              --filters "Name=tag:Name,Values=$TAG_NAME" "Name=instance-state-name,Values=running" \
+              --query 'Reservations[].Instances[].InstanceId' \
+              --output text | awk '{print $1}' || true)
+
+            if [ -n "$RESOLVED_ID" ]; then
+              echo "Resolved by tag: $RESOLVED_ID"
+            else
+              echo "No running instance found with Name=$TAG_NAME"
+            fi
           fi
 
           if [ -z "$RESOLVED_ID" ]; then
@@ -88,187 +104,183 @@ jobs:
             exit 1
           fi
 
-          echo "Resolved instance id: $RESOLVED_ID"
           echo "resolved_instance_id=$RESOLVED_ID" >> $GITHUB_OUTPUT
 
-      - name: Deploy via SSM Run Command
+      - name: Send deployment command via SSM
+        id: send-ssm
         run: |
-          # Build SSM command dynamically (S3 output is optional)
-          SSM_CMD="aws ssm send-command \
-            --instance-ids \"${{ steps.resolve-instance.outputs.resolved_instance_id }}\" \
-            --document-name \"AWS-RunShellScript\" \
-            --comment \"Deploy ${{ env.ECR_REPOSITORY }}:${{ github.event.inputs.image_tag }} to ${{ github.event.inputs.environment }}\" \
-            --parameters 'commands=[
-              \"set -e\",
-              \"echo \\\"===== MLOps Deployment Script (Idempotent) =====\\\"\",
-              \"echo \\\"Environment: ${{ github.event.inputs.environment }}\\\"\",
-              \"echo \\\"Image: ${{ steps.vars.outputs.image_uri }}\\\"\",
-              \"echo \\\"\\\"\",
-              
-              \"# Step 1: Install Docker if not present\",
-              \"echo \\\"[1/6] Checking Docker installation...\\\"\",
-              \"if ! command -v docker &> /dev/null; then\",
-              \"  echo \\\"Docker not found. Installing...\\\"\",
-              \"  sudo apt-get update -qq\",
-              \"  sudo apt-get install -y -qq apt-transport-https ca-certificates curl software-properties-common\",
-              \"  curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg\",
-              \"  echo \\\\\\\"deb [arch=\\$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu \\$(lsb_release -cs) stable\\\\\\\" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null\",
-              \"  sudo apt-get update -qq\",
-              \"  sudo apt-get install -y -qq docker-ce docker-ce-cli containerd.io\",
-              \"  sudo systemctl enable docker\",
-              \"  sudo systemctl start docker\",
-              \"  sudo usermod -aG docker \\$USER\",
-              \"  echo \\\"✓ Docker installed successfully\\\"\",
-              \"else\",
-              \"  echo \\\"✓ Docker already installed (version: \\$(docker --version))\\\"\",
-              \"fi\",
-              \"sudo systemctl is-active --quiet docker || sudo systemctl start docker\",
-              \"echo \\\"\\\"\",
-              
-              \"# Step 2: Install AWS CLI if not present\",
-              \"echo \\\"[2/6] Checking AWS CLI installation...\\\"\",
-              \"if ! command -v aws &> /dev/null; then\",
-              \"  echo \\\"AWS CLI not found. Installing...\\\"\",
-              \"  curl -fsSL https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip -o /tmp/awscliv2.zip\",
-              \"  sudo apt-get install -y -qq unzip\",
-              \"  unzip -q /tmp/awscliv2.zip -d /tmp\",
-              \"  sudo /tmp/aws/install --update\",
-              \"  rm -rf /tmp/awscliv2.zip /tmp/aws\",
-              \"  echo \\\"✓ AWS CLI installed successfully\\\"\",
-              \"else\",
-              \"  echo \\\"✓ AWS CLI already installed (version: \\$(aws --version))\\\"\",
-              \"fi\",
-              \"echo \\\"\\\"\",
-              
-              \"# Step 3: Ensure application directory exists\",
-              \"echo \\\"[3/6] Setting up application directory...\\\"\",
-              \"sudo mkdir -p ${{ steps.vars.outputs.app_dir }}\",
-              \"sudo chown \\$USER:\\$USER ${{ steps.vars.outputs.app_dir }}\",
-              \"cd ${{ steps.vars.outputs.app_dir }}\",
-              \"echo \\\"✓ Application directory ready: ${{ steps.vars.outputs.app_dir }}\\\"\",
-              \"echo \\\"\\\"\",
-              
-              \"# Step 4: Pull Docker image from ECR\",
-              \"echo \\\"[4/6] Pulling Docker image from ECR...\\\"\",
-              \"aws ecr get-login-password --region ${{ env.AWS_REGION }} | sudo docker login --username AWS --password-stdin ${{ secrets.ECR_REGISTRY }}\",
-              \"sudo docker pull ${{ steps.vars.outputs.image_uri }}\",
-              \"echo \\\"✓ Image pulled successfully\\\"\",
-              \"echo \\\"\\\"\",
-              
-              \"# Step 5: Deploy container\",
-              \"echo \\\"[5/6] Deploying container...\\\"\",
-              \"sudo docker stop water-quality-app 2>/dev/null || echo \\\"  (no existing container to stop)\\\"\",
-              \"sudo docker rm water-quality-app 2>/dev/null || echo \\\"  (no existing container to remove)\\\"\",
-              \"sudo docker run -d \",
-              \"  --name water-quality-app \",
-              \"  --restart unless-stopped \",
-              \"  -p ${{ steps.vars.outputs.app_port }}:8000 \",
-              \"  -e AWS_REGION=${{ env.AWS_REGION }} \",
-              \"  -e ENVIRONMENT=${{ github.event.inputs.environment }} \",
-              \"  ${{ steps.vars.outputs.image_uri }}\",
-              \"echo \\\"✓ Container started\\\"\",
-              \"echo \\\"\\\"\",
-              
-              \"# Step 6: Health check\",
-              \"echo \\\"[6/6] Running health check...\\\"\",
-              \"for i in {1..30}; do\",
-              \"  if curl -sf http://localhost:${{ steps.vars.outputs.app_port }}/ > /dev/null; then\",
-              \"    echo \\\"✓ Health check passed! Application is responding.\\\"\",
-              \"    curl -s http://localhost:${{ steps.vars.outputs.app_port }}/ | head -n 3\",
-              \"    break\",
-              \"  fi\",
-              \"  if [ \\$i -eq 30 ]; then\",
-              \"    echo \\\"✗ Health check failed after 30 attempts\\\"\",
-              \"    echo \\\"Container logs:\\\"\",
-              \"    sudo docker logs water-quality-app --tail 50\",
-              \"    exit 1\",
-              \"  fi\",
-              \"  echo \\\"  Waiting for app to start (attempt \\$i/30)...\\\"\",
-              \"  sleep 2\",
-              \"done\",
-              \"echo \\\"\\\"\",
-              
-              \"# Summary\",
-              \"echo \\\"===== Deployment Complete =====\"\\\"\",
-              \"echo \\\"Container: water-quality-app\\\"\",
-              \"echo \\\"Status: \\$(sudo docker inspect -f {{.State.Status}} water-quality-app)\\\"\",
-              \"echo \\\"Port: ${{ steps.vars.outputs.app_port }}\\\"\",
-              \"echo \\\"Image: ${{ steps.vars.outputs.image_uri }}\\\"\",
-              \"echo \\\"Uptime: \\$(sudo docker inspect -f {{.State.StartedAt}} water-quality-app)\\\"\",
-              \"echo \\\"===============================\"\\\"\"
-            ]' \
-            --cloud-watch-output-config '{\"CloudWatchLogGroupName\":\"/aws/ssm/mlops-deploy\",\"CloudWatchOutputEnabled\":true}'"
-          
-          # Add S3 output if bucket is configured
-          if [ -n "${{ secrets.SSM_OUTPUT_BUCKET }}" ]; then
-            SSM_CMD="$SSM_CMD --output-s3-bucket-name \"${{ secrets.SSM_OUTPUT_BUCKET }}\" --output-s3-key-prefix \"ssm-logs/${{ github.event.inputs.environment }}\""
-          fi
-          
-          # Add query and output
-          SSM_CMD="$SSM_CMD --query 'Command.CommandId' --output text"
-          
-          # Execute command
-          eval "$SSM_CMD" > command_id.txt
-          
-          COMMAND_ID=$(cat command_id.txt)
+          set -euo pipefail
+          INSTANCE_ID="${{ steps.resolve-instance.outputs.resolved_instance_id }}"
+          IMAGE_URI="${{ steps.vars.outputs.image_uri }}"
+          APP_DIR="${{ steps.vars.outputs.app_dir }}"
+          APP_PORT="${{ steps.vars.outputs.app_port }}"
+          ENVIRONMENT="${{ github.event.inputs.environment }}"
+
+          echo "Sending deployment command to instance: $INSTANCE_ID"
+          # Build inline multi-line script (make sure quotes are escaped for aws CLI JSON)
+          # We keep the same idempotent deployment script as before but create it as a single JSON parameter.
+          read -r -d '' SCRIPT <<''EOF
+set -e
+echo "===== MLOps Deployment Script (Idempotent) ===="
+echo "Environment: ${ENVIRONMENT}"
+echo "Image: ${IMAGE_URI}"
+
+# Step 1: Install Docker (if missing)
+echo "[1/6] Checking Docker installation..."
+if ! command -v docker &> /dev/null; then
+  echo "Docker not found. Installing..."
+  sudo apt-get update -qq
+  sudo apt-get install -y -qq apt-transport-https ca-certificates curl software-properties-common gnupg
+  curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
+  echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+  sudo apt-get update -qq
+  sudo apt-get install -y -qq docker-ce docker-ce-cli containerd.io
+  sudo systemctl enable docker --now
+  sudo usermod -aG docker $USER || true
+  echo "✓ Docker installed"
+else
+  echo "✓ Docker already installed: $(docker --version)"
+fi
+
+sudo systemctl is-active --quiet docker || sudo systemctl start docker
+
+# Step 2: Ensure aws cli present (ssm agent usually present for SSM + aws cli optional)
+echo "[2/6] Checking aws cli..."
+if ! command -v aws &> /dev/null; then
+  echo "AWS CLI not found. Installing..."
+  curl -fsSL https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip -o /tmp/awscliv2.zip
+  sudo apt-get install -y -qq unzip
+  unzip -q /tmp/awscliv2.zip -d /tmp
+  sudo /tmp/aws/install --update
+  rm -rf /tmp/awscliv2.zip /tmp/aws
+  echo "✓ AWS CLI installed"
+else
+  echo "✓ AWS CLI already installed: $(aws --version)"
+fi
+
+# Step 3: Prepare app directory
+echo "[3/6] Preparing application directory..."
+sudo mkdir -p ${APP_DIR}
+sudo chown $USER:$USER ${APP_DIR}
+cd ${APP_DIR}
+echo "✓ App dir: ${APP_DIR}"
+
+# Step 4: Pull image from ECR
+echo "[4/6] Pulling image ${IMAGE_URI}..."
+aws ecr get-login-password --region ${AWS_REGION} | sudo docker login --username AWS --password-stdin ${IMAGE_URI%/*}
+sudo docker pull ${IMAGE_URI}
+echo "✓ Image pulled"
+
+# Step 5: Run container
+echo "[5/6] Deploying container..."
+sudo docker stop water-quality-app 2>/dev/null || echo "(no existing container to stop)"
+sudo docker rm water-quality-app 2>/dev/null || echo "(no existing container to remove)"
+sudo docker run -d \
+  --name water-quality-app \
+  --restart unless-stopped \
+  -p ${APP_PORT}:8000 \
+  -e AWS_REGION=${AWS_REGION} \
+  -e ENVIRONMENT=${ENVIRONMENT} \
+  ${IMAGE_URI}
+echo "✓ Container started"
+
+# Step 6: Healthcheck (wait up to ~60s)
+echo "[6/6] Healthcheck..."
+for i in {1..30}; do
+  if curl -sf http://localhost:${APP_PORT}/ >/dev/null; then
+    echo "✓ Health check passed"
+    curl -s http://localhost:${APP_PORT}/ | head -n 3
+    break
+  fi
+  if [ $i -eq 30 ]; then
+    echo "✗ Health check failed after 30 attempts"
+    echo "Container logs:"
+    sudo docker logs water-quality-app --tail 200 || true
+    exit 1
+  fi
+  echo "  Waiting for app to start (attempt $i/30)..."
+  sleep 2
+done
+
+echo "===== Deployment Complete ====="
+echo "Container: water-quality-app"
+echo "Status: $(sudo docker inspect -f '{{.State.Status}}' water-quality-app)"
+echo "Port: ${APP_PORT}"
+echo "Image: ${IMAGE_URI}"
+echo "Uptime: $(sudo docker inspect -f '{{.State.StartedAt}}' water-quality-app)"
+EOF
+
+          # Build aws CLI parameters JSON safely: wrap script as a single element in the commands array
+          # Use printf with %q to escape newlines for aws CLI JSON (we prefer to pass a single string command which runs the heredoc)
+          # Here we send a one-liner that executes the multi-line script via bash -c
+          # Use base64 to avoid complex escaping:
+          PAYLOAD_B64=$(printf '%s' "$SCRIPT" | base64 -w0)
+          CTA="bash -lc \"base64 -d <<'B64' | bash -s --\\n${PAYLOAD_B64}\\nB64\""
+
+          # send command and capture command id
+          COMMAND_ID=$(aws ssm send-command \
+            --instance-ids "$INSTANCE_ID" \
+            --document-name "AWS-RunShellScript" \
+            --comment "Deploy ${IMAGE_URI} to ${ENVIRONMENT}" \
+            --parameters commands=["$CTA"] \
+            --cloud-watch-output-config "{\"CloudWatchLogGroupName\":\"/aws/ssm/mlops-deploy\",\"CloudWatchOutputEnabled\":true}" \
+            --query "Command.CommandId" \
+            --output text)
+
           echo "Command ID: $COMMAND_ID"
           echo "command_id=$COMMAND_ID" >> $GITHUB_ENV
 
       - name: Wait for deployment to complete
         run: |
-          echo "Waiting for SSM command to complete..."
+          set -euo pipefail
+          INSTANCE_ID="${{ steps.resolve-instance.outputs.resolved_instance_id }}"
+          CMD_ID="${{ env.command_id }}"
+          echo "Waiting for SSM command $CMD_ID on instance $INSTANCE_ID"
           for i in {1..60}; do
             STATUS=$(aws ssm get-command-invocation \
-              --command-id ${{ env.command_id }} \
-              --instance-id ${{ steps.resolve-instance.outputs.resolved_instance_id }} \
+              --command-id "$CMD_ID" \
+              --instance-id "$INSTANCE_ID" \
               --query 'Status' \
-              --output text)
-            
+              --output text || echo "Unknown")
             echo "Attempt $i: Status = $STATUS"
-            
-            if [ "$STATUS" == "Success" ]; then
+            if [ "$STATUS" = "Success" ]; then
               echo "✅ Deployment completed successfully!"
               aws ssm get-command-invocation \
-                --command-id ${{ env.command_id }} \
-                --instance-id ${{ steps.resolve-instance.outputs.resolved_instance_id }} \
+                --command-id "$CMD_ID" \
+                --instance-id "$INSTANCE_ID" \
                 --query 'StandardOutputContent' \
-                --output text
+                --output text || true
               exit 0
-            elif [ "$STATUS" == "Failed" ] || [ "$STATUS" == "Cancelled" ] || [ "$STATUS" == "TimedOut" ]; then
+            elif [ "$STATUS" = "Failed" ] || [ "$STATUS" = "Cancelled" ] || [ "$STATUS" = "TimedOut" ]; then
               echo "❌ Deployment failed with status: $STATUS"
               aws ssm get-command-invocation \
-                --command-id ${{ env.command_id }} \
-                --instance-id ${{ steps.resolve-instance.outputs.resolved_instance_id }} \
+                --command-id "$CMD_ID" \
+                --instance-id "$INSTANCE_ID" \
                 --query 'StandardErrorContent' \
-                --output text
+                --output text || true
               exit 1
             fi
-            
             sleep 10
           done
-          
           echo "⏱️ Deployment timed out after 10 minutes"
           exit 1
 
-      - name: Health check
+      - name: Health check (external)
         run: |
-          # Give app a moment to fully start
           sleep 15
-          
-          if [ "${{ github.event.inputs.environment }}" == "production" ]; then
+          if [ "${{ github.event.inputs.environment }}" = "production" ]; then
             ENDPOINT="${{ secrets.PROD_URL }}"
           else
             ENDPOINT="${{ secrets.STAGING_URL }}"
           fi
-          
           echo "Testing endpoint: $ENDPOINT"
-          curl -f "$ENDPOINT" || echo "⚠️  External health check failed (check security groups)"
-          
-          # Try prediction endpoint
-          curl -f -X POST "$ENDPOINT/predict" \
-            -H "Content-Type: application/json" \
-            -d '{"features": [7.0, 200.0, 20000.0, 7.5, 400.0, 200.0, 15.0, 20.0, 350.0]}' \
-            || echo "⚠️  Prediction endpoint test failed"
+          if curl -sf "$ENDPOINT"; then
+            echo "External endpoint OK"
+          else
+            echo "⚠️  External health check failed (check security groups / ALB / public IP)"
+          fi
+          # Try prediction endpoint (non-fatal)
+          curl -sf -X POST "$ENDPOINT/predict" -H "Content-Type: application/json" -d '{"features":[7.0,200.0,20000.0,7.5,400.0,200.0,15.0,20.0,350.0]}' || echo "⚠️ Prediction endpoint test failed"
 
       - name: Deployment summary
         if: always()
