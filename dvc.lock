@@ -22,7 +22,7 @@ stages:
     deps:
     - path: configs/params.yaml
       hash: md5
-      md5: f15c4d566faa9ac703a0d9bca9ef5b6b
+      md5: 16abc7683fa6e17c6745d6d43d230125
       size: 592
     - path: data/processed/water_potability.csv
       hash: md5
@@ -61,7 +61,7 @@ stages:
     deps:
     - path: configs/params.yaml
       hash: md5
-      md5: f15c4d566faa9ac703a0d9bca9ef5b6b
+      md5: 16abc7683fa6e17c6745d6d43d230125
       size: 592
     - path: data/processed/train.csv
       hash: md5
@@ -79,26 +79,26 @@ stages:
       configs/params.yaml:
         model.type: xgboost
         train.cv_folds: 5
-        train.n_trials: 20
+        train.n_trials: 25
     outs:
     - path: app/model_registry/model.joblib
       hash: md5
-      md5: 0f7a7e08c63afac22dba6616d4e49b43
-      size: 2339213
+      md5: 805e0525fa750aebbd1ef6b73d1377c5
+      size: 1170011
     - path: artifacts/metrics/train_metrics.json
       hash: md5
-      md5: 86efb5af7d953f0626043325358efed8
-      size: 422
+      md5: df2dcd68cc31a9c394d18a9abc24e53e
+      size: 428
   evaluate:
     cmd: python -m src.models.evaluate --params configs/params.yaml
     deps:
     - path: app/model_registry/model.joblib
       hash: md5
-      md5: 0f7a7e08c63afac22dba6616d4e49b43
-      size: 2339213
+      md5: 805e0525fa750aebbd1ef6b73d1377c5
+      size: 1170011
     - path: configs/params.yaml
       hash: md5
-      md5: f15c4d566faa9ac703a0d9bca9ef5b6b
+      md5: 16abc7683fa6e17c6745d6d43d230125
       size: 592
     - path: data/processed/test.csv
       hash: md5
@@ -114,13 +114,13 @@ stages:
     outs:
     - path: artifacts/metrics/test_metrics.json
       hash: md5
-      md5: 1132a91c8b620234282eac984193db73
-      size: 90
+      md5: 05445ebcef0b9375703c869120e8b6ce
+      size: 93
     - path: artifacts/plots/confusion_matrix.png
       hash: md5
-      md5: d894696fb06296e90b48d05ba006a803
-      size: 29367
+      md5: 8e0d4a1accfa378abf8a20f8f6e5949d
+      size: 29437
     - path: artifacts/plots/roc_curve.png
       hash: md5
-      md5: 389695f1997e25d9e49e60792811d142
-      size: 41380
+      md5: afdbfcecfaa0f5f12df8ba4aefdb26a9
+      size: 41669

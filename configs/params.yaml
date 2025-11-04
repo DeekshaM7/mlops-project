@@ -18,7 +18,7 @@ model:
     min_samples_leaf: 1
     class_weight: balanced
 train:
-  n_trials: 20
+  n_trials: 25
   scoring: roc_auc
   cv_folds: 5
 evaluate:
