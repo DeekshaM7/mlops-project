@@ -22,7 +22,7 @@ stages:
     deps:
     - path: configs/params.yaml
       hash: md5
-      md5: d62ac2aec82aa896034bfb9e1616eb14
+      md5: c6922cbf61f378e82a05279898cea872
       size: 592
     - path: data/processed/water_potability.csv
       hash: md5
@@ -61,7 +61,7 @@ stages:
     deps:
     - path: configs/params.yaml
       hash: md5
-      md5: d62ac2aec82aa896034bfb9e1616eb14
+      md5: 9cf4d37edc83e5f77745fe139383ba4d
       size: 592
     - path: data/processed/train.csv
       hash: md5
@@ -78,27 +78,27 @@ stages:
     params:
       configs/params.yaml:
         model.type: xgboost
-        train.cv_folds: 3
-        train.n_trials: 15
+        train.cv_folds: 5
+        train.n_trials: 10
     outs:
     - path: app/model_registry/model.joblib
       hash: md5
-      md5: 25284a26aa4db27c852e7e3592086cb6
-      size: 587789
+      md5: 6c9f48d6ed43565e202331748202e91a
+      size: 345902
     - path: artifacts/metrics/train_metrics.json
       hash: md5
-      md5: 95770fd4127309c8be34b1cf43e550ee
-      size: 429
+      md5: 7961b901603bf3318912c95fdfaceffa
+      size: 430
   evaluate:
     cmd: python -m src.models.evaluate --params configs/params.yaml
     deps:
     - path: app/model_registry/model.joblib
       hash: md5
-      md5: 25284a26aa4db27c852e7e3592086cb6
-      size: 587789
+      md5: 6c9f48d6ed43565e202331748202e91a
+      size: 345902
     - path: configs/params.yaml
       hash: md5
-      md5: d62ac2aec82aa896034bfb9e1616eb14
+      md5: 9cf4d37edc83e5f77745fe139383ba4d
       size: 592
     - path: data/processed/test.csv
       hash: md5
@@ -114,13 +114,13 @@ stages:
     outs:
     - path: artifacts/metrics/test_metrics.json
       hash: md5
-      md5: cdc2e22b4a245126528005697baedce0
-      size: 97
+      md5: acbb23594791e0fa094c421d458b84d0
+      size: 88
     - path: artifacts/plots/confusion_matrix.png
       hash: md5
-      md5: 1d1607b91733d7624aca18bd7951e9a0
-      size: 29364
+      md5: af7a05056778e02a281dddcf42c74b52
+      size: 29480
     - path: artifacts/plots/roc_curve.png
       hash: md5
-      md5: 3cbc9f9911b4bc0b6d869b5769d49a14
-      size: 41382
+      md5: 81ceb851a7856ab23626e51008400c8e
+      size: 41412

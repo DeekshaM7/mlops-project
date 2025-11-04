@@ -268,20 +268,26 @@ jobs:
           echo "✓ Step 1 complete: Script content created"
           echo "Script length: ${#SCRIPT_CONTENT} characters"
           
-          # Build the AWS CLI command using a JSON file for robust parameter passing
+          # Build the AWS CLI command using proper JSON escaping
           echo ""
           echo "Step 2: Creating SSM parameters JSON file..."
           SSM_PARAMS_JSON=$(mktemp)
           echo "Temp file created: $SSM_PARAMS_JSON"
           
-          cat > "$SSM_PARAMS_JSON" <<JSON
-          {
-            "commands": ["export APP_DIR='${APP_DIR}' IMAGE_URI='${IMAGE_URI}' APP_PORT='${APP_PORT}' ENVIRONMENT='${ENVIRONMENT}' ECR_REGISTRY='${ECR_REGISTRY}' AWS_REGION='${AWS_REGION}'; ${SCRIPT_CONTENT}"]
-          }
-          JSON
+          # Properly escape the script content for JSON (replace newlines with \n, escape quotes and backslashes)
+          ESCAPED_SCRIPT=$(echo "$SCRIPT_CONTENT" | jq -Rs .)
+          
+          # Build the full command with environment variable exports
+          FULL_COMMAND="export APP_DIR='${APP_DIR}' IMAGE_URI='${IMAGE_URI}' APP_PORT='${APP_PORT}' ENVIRONMENT='${ENVIRONMENT}' ECR_REGISTRY='${ECR_REGISTRY}' AWS_REGION='${AWS_REGION}'; ${SCRIPT_CONTENT}"
+          
+          # Create properly formatted JSON using jq
+          jq -n \
+            --arg cmd "$FULL_COMMAND" \
+            '{commands: [$cmd]}' > "$SSM_PARAMS_JSON"
 
           echo "✓ Step 2 complete: JSON file created"
           echo "JSON file size: $(wc -c < "$SSM_PARAMS_JSON") bytes"
+          echo "JSON validation: $(jq empty "$SSM_PARAMS_JSON" 2>&1 && echo 'VALID' || echo 'INVALID')"
           echo ""
           echo "Step 3: Building AWS SSM command..."
           
