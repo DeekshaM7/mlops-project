@@ -61,7 +61,7 @@ stages:
     deps:
     - path: configs/params.yaml
       hash: md5
-      md5: 9cf4d37edc83e5f77745fe139383ba4d
+      md5: c6922cbf61f378e82a05279898cea872
       size: 592
     - path: data/processed/train.csv
       hash: md5
@@ -79,26 +79,26 @@ stages:
       configs/params.yaml:
         model.type: xgboost
         train.cv_folds: 5
-        train.n_trials: 10
+        train.n_trials: 35
     outs:
     - path: app/model_registry/model.joblib
       hash: md5
-      md5: 6c9f48d6ed43565e202331748202e91a
-      size: 345902
+      md5: fbc5fe3ff8324449cce7392593524ca6
+      size: 2371507
     - path: artifacts/metrics/train_metrics.json
       hash: md5
-      md5: 7961b901603bf3318912c95fdfaceffa
-      size: 430
+      md5: 8dde9cc6199af23d9684eeb4a449a4e0
+      size: 418
   evaluate:
     cmd: python -m src.models.evaluate --params configs/params.yaml
     deps:
     - path: app/model_registry/model.joblib
       hash: md5
-      md5: 6c9f48d6ed43565e202331748202e91a
-      size: 345902
+      md5: fbc5fe3ff8324449cce7392593524ca6
+      size: 2371507
     - path: configs/params.yaml
       hash: md5
-      md5: 9cf4d37edc83e5f77745fe139383ba4d
+      md5: c6922cbf61f378e82a05279898cea872
       size: 592
     - path: data/processed/test.csv
       hash: md5
@@ -114,13 +114,13 @@ stages:
     outs:
     - path: artifacts/metrics/test_metrics.json
       hash: md5
-      md5: acbb23594791e0fa094c421d458b84d0
-      size: 88
+      md5: 4bebc5838afad4c4364bf08ad9d37e6f
+      size: 93
     - path: artifacts/plots/confusion_matrix.png
       hash: md5
-      md5: af7a05056778e02a281dddcf42c74b52
-      size: 29480
+      md5: eebe5e19eb1c7333cfe0d1616d73cc89
+      size: 29402
     - path: artifacts/plots/roc_curve.png
       hash: md5
-      md5: 81ceb851a7856ab23626e51008400c8e
-      size: 41412
+      md5: 3cf66176d7eaea59f64a47ab2b56ea4b
+      size: 41394
