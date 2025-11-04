@@ -52,8 +52,8 @@ COPY configs/ ./configs/
 COPY governance/ ./governance/
 
 # Copy model artifacts (if available)
-COPY data/processed/transformer.joblib ./data/processed/transformer.joblib
-COPY app/model_registry/ ./app/model_registry/
+# COPY data/processed/transformer.joblib ./data/processed/transformer.joblib
+# COPY app/model_registry/ ./app/model_registry/
 
 # Create necessary directories
 RUN mkdir -p /app/logs /app/tmp && \
