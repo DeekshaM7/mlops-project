@@ -63,17 +63,20 @@ jobs:
         run: |
           set -euo pipefail
           CANDIDATE_ID="${{ steps.vars.outputs.instance_id }}"
+          AWS_REGION="${{ env.AWS_REGION }}"
 
           echo "Debug: candidate instance id from secrets: '$CANDIDATE_ID'"
+          echo "Debug: AWS Region: $AWS_REGION"
 
           RESOLVED_ID=""
 
           # Validate provided instance id format (i-123...)
           if [[ -n "$CANDIDATE_ID" && "$CANDIDATE_ID" =~ ^i-([0-9a-f]{8}|[0-9a-f]{17})$ ]]; then
             RESOLVED_ID="$CANDIDATE_ID"
-            echo "Using provided instance id: $RESOLVED_ID"
+            echo "✓ Using provided instance id: $RESOLVED_ID"
           else
-            echo "Provided instance_id empty/invalid; attempting to resolve by tag..."
+            echo "⚠ Provided instance_id empty/invalid (regex check failed); attempting to resolve by tag..."
+            
             if [ "${{ github.event.inputs.environment }}" = "production" ]; then
               TAG_NAME="${{ secrets.PROD_EC2_TAG_NAME }}"
               [ -z "$TAG_NAME" ] && TAG_NAME="mlops-production"
@@ -82,26 +85,53 @@ jobs:
               [ -z "$TAG_NAME" ] && TAG_NAME="mlops-staging"
             fi
 
-            echo "Looking for running instance with tag Name=$TAG_NAME in region $AWS_REGION"
-
-            # Get the first running instance id for the tag (if multiple, pick first)
-            RESOLVED_ID=$(aws ec2 describe-instances \
+            echo "Searching for running instance with tag Name=$TAG_NAME in region $AWS_REGION..."
+            
+            # Try to get instance ID with better error handling
+            set +e  # Temporarily disable exit on error to capture AWS CLI output
+            AWS_OUTPUT=$(aws ec2 describe-instances \
               --region "$AWS_REGION" \
               --filters "Name=tag:Name,Values=$TAG_NAME" "Name=instance-state-name,Values=running" \
               --query 'Reservations[].Instances[].InstanceId' \
-              --output text | awk '{print $1}' || true)
-
-            if [ -n "$RESOLVED_ID" ]; then
-              echo "Resolved by tag: $RESOLVED_ID"
+              --output text 2>&1)
+            AWS_EXIT_CODE=$?
+            set -e  # Re-enable exit on error
+            
+            if [ $AWS_EXIT_CODE -eq 0 ]; then
+              RESOLVED_ID=$(echo "$AWS_OUTPUT" | awk '{print $1}')
+              if [ -n "$RESOLVED_ID" ] && [ "$RESOLVED_ID" != "None" ]; then
+                echo "✓ Resolved by tag: $RESOLVED_ID"
+              else
+                echo "✗ No running instance found with tag Name=$TAG_NAME"
+                echo "AWS CLI output: $AWS_OUTPUT"
+              fi
             else
-              echo "No running instance found with Name=$TAG_NAME"
+              echo "✗ AWS CLI error (exit code $AWS_EXIT_CODE):"
+              echo "$AWS_OUTPUT"
+              echo ""
+              echo "This might be due to:"
+              echo "  - Missing IAM permissions (ec2:DescribeInstances)"
+              echo "  - Invalid region"
+              echo "  - Network connectivity issues"
             fi
           fi
 
           if [ -z "$RESOLVED_ID" ]; then
-            echo "ERROR: Could not resolve a valid EC2 instance ID."
-            echo "- Provide a valid instance ID via secrets STAGING_EC2_INSTANCE_ID/PROD_EC2_INSTANCE_ID"
-            echo "- Or tag your instance Name=mlops-staging (or mlops-production) or set STAGING_EC2_TAG_NAME/PROD_EC2_TAG_NAME"
+            echo ""
+            echo "====== ERROR: Could not resolve a valid EC2 instance ID ======"
+            echo "Options:"
+            echo "  1. Provide a valid instance ID via secrets:"
+            echo "     - STAGING_EC2_INSTANCE_ID (format: i-xxxxxxxxx or i-xxxxxxxxxxxxxxxxx)"
+            echo "     - PROD_EC2_INSTANCE_ID"
+            echo "  2. Tag your EC2 instance with Name=mlops-staging (or mlops-production)"
+            echo "  3. Or set custom tag name via STAGING_EC2_TAG_NAME/PROD_EC2_TAG_NAME secrets"
+            echo ""
+            echo "Current values:"
+            echo "  - Candidate ID from secret: '$CANDIDATE_ID'"
+            echo "  - Environment: ${{ github.event.inputs.environment }}"
+            echo "  - Tag name used: $TAG_NAME"
+            echo "  - Region: $AWS_REGION"
+            echo "=============================================================="
             exit 1
           fi
 
@@ -262,7 +292,7 @@ jobs:
           echo "command_id=$COMMAND_ID" >> $GITHUB_ENV
           
           # Cleanup
-          rm -f "$SSM_PARAMS_JSON"
+          sudo rm -f "$SSM_PARAMS_JSON"
 
       - name: Wait for deployment to complete
         run: |
