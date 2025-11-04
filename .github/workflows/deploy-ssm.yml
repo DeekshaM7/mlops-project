@@ -149,14 +149,23 @@ jobs:
           ECR_REGISTRY="${{ secrets.ECR_REGISTRY }}"
           AWS_REGION="${{ env.AWS_REGION }}"
 
-          echo "Sending deployment command to instance: $INSTANCE_ID"
-          echo "Image: $IMAGE_URI"
-          echo "Environment: $ENVIRONMENT"
+          echo "=========================================="
+          echo "DEBUG: Send deployment command via SSM"
+          echo "=========================================="
+          echo "INSTANCE_ID: $INSTANCE_ID"
+          echo "IMAGE_URI: $IMAGE_URI"
+          echo "APP_DIR: $APP_DIR"
+          echo "APP_PORT: $APP_PORT"
+          echo "ENVIRONMENT: $ENVIRONMENT"
+          echo "ECR_REGISTRY: $ECR_REGISTRY"
+          echo "AWS_REGION: $AWS_REGION"
+          echo "=========================================="
 
           # Define the script as a shell variable.
           # Using single quotes (') for the outer wrapper prevents premature expansion.
           # Variables like '$USER' are escaped ('\$USER') to be expanded on the remote EC2 instance, not in GitHub Actions.
-          read -r -d '' SCRIPT_CONTENT << 'EOF'
+          echo "Step 1: Creating deployment script content..."
+          read -r -d '' SCRIPT_CONTENT << 'EOF' || true
           set -e
           echo "===== MLOps Deployment Script (Idempotent) ====="
           echo "Environment: ${ENVIRONMENT}"
@@ -256,14 +265,26 @@ jobs:
           echo "==============================="
           EOF
 
+          echo "✓ Step 1 complete: Script content created"
+          echo "Script length: ${#SCRIPT_CONTENT} characters"
+          
           # Build the AWS CLI command using a JSON file for robust parameter passing
+          echo ""
+          echo "Step 2: Creating SSM parameters JSON file..."
           SSM_PARAMS_JSON=$(mktemp)
+          echo "Temp file created: $SSM_PARAMS_JSON"
+          
           cat > "$SSM_PARAMS_JSON" <<JSON
           {
             "commands": ["export APP_DIR='${APP_DIR}' IMAGE_URI='${IMAGE_URI}' APP_PORT='${APP_PORT}' ENVIRONMENT='${ENVIRONMENT}' ECR_REGISTRY='${ECR_REGISTRY}' AWS_REGION='${AWS_REGION}'; ${SCRIPT_CONTENT}"]
           }
           JSON
 
+          echo "✓ Step 2 complete: JSON file created"
+          echo "JSON file size: $(wc -c < "$SSM_PARAMS_JSON") bytes"
+          echo ""
+          echo "Step 3: Building AWS SSM command..."
+          
           SSM_CMD=(
             aws ssm send-command
             --instance-ids "$INSTANCE_ID"
@@ -274,10 +295,13 @@ jobs:
           )
 
           if [ -n "${{ secrets.SSM_OUTPUT_BUCKET }}" ]; then
+            echo "  - Adding S3 output bucket: ${{ secrets.SSM_OUTPUT_BUCKET }}"
             SSM_CMD+=(
               --output-s3-bucket-name "${{ secrets.SSM_OUTPUT_BUCKET }}"
               --output-s3-key-prefix "ssm-logs/$ENVIRONMENT"
             )
+          else
+            echo "  - No S3 output bucket configured (SSM_OUTPUT_BUCKET secret not set)"
           fi
 
           SSM_CMD+=(
@@ -285,66 +309,200 @@ jobs:
             --output text
           )
           
-          # Execute the command and capture the command ID
-          COMMAND_ID=$("${SSM_CMD[@]}")
+          echo "✓ Step 3 complete: Command built"
+          echo ""
+          echo "Step 4: Executing AWS SSM send-command..."
+          echo "Full command: ${SSM_CMD[*]}"
+          echo ""
+          
+          # Execute the command and capture the command ID with error handling
+          set +e
+          COMMAND_ID=$("${SSM_CMD[@]}" 2>&1)
+          SSM_EXIT_CODE=$?
+          set -e
+          
+          if [ $SSM_EXIT_CODE -ne 0 ]; then
+            echo "❌ ERROR: AWS SSM send-command failed with exit code $SSM_EXIT_CODE"
+            echo "Error output:"
+            echo "$COMMAND_ID"
+            echo ""
+            echo "Debugging information:"
+            echo "  - Instance ID: $INSTANCE_ID"
+            echo "  - Region: $AWS_REGION"
+            echo "  - JSON params file: $SSM_PARAMS_JSON"
+            echo ""
+            echo "JSON file contents (first 500 chars):"
+            head -c 500 "$SSM_PARAMS_JSON"
+            echo ""
+            echo ""
+            echo "Possible causes:"
+            echo "  1. Instance not managed by SSM (check SSM agent is running)"
+            echo "  2. Missing IAM permissions (ssm:SendCommand)"
+            echo "  3. Invalid instance ID"
+            echo "  4. Command payload too large"
+            sudo rm -f "$SSM_PARAMS_JSON"
+            exit 1
+          fi
 
+          echo "✓ Step 4 complete: Command sent successfully"
           echo "Command ID: $COMMAND_ID"
           echo "command_id=$COMMAND_ID" >> $GITHUB_ENV
           
           # Cleanup
-          sudo rm -f "$SSM_PARAMS_JSON"
+          echo ""
+          echo "Step 5: Cleaning up temporary files..."
+          rm -f "$SSM_PARAMS_JSON"
+          echo "✓ Step 5 complete: Cleanup done"
+          echo "=========================================="
 
       - name: Wait for deployment to complete
         run: |
           set -euo pipefail
           INSTANCE_ID="${{ steps.resolve-instance.outputs.resolved_instance_id }}"
           CMD_ID="${{ env.command_id }}"
-          echo "Waiting for SSM command $CMD_ID on instance $INSTANCE_ID"
+          
+          echo "=========================================="
+          echo "DEBUG: Wait for deployment to complete"
+          echo "=========================================="
+          echo "Instance ID: $INSTANCE_ID"
+          echo "Command ID: $CMD_ID"
+          echo "Max wait time: 10 minutes (60 iterations x 10 seconds)"
+          echo "=========================================="
+          echo ""
+          
           for i in {1..60}; do
+            echo "[$i/60] Checking command status..."
+            
+            set +e
             STATUS=$(aws ssm get-command-invocation \
               --command-id "$CMD_ID" \
               --instance-id "$INSTANCE_ID" \
               --query 'Status' \
-              --output text || echo "Unknown")
-            echo "Attempt $i: Status = $STATUS"
-            if [ "$STATUS" = "Success" ]; then
-              echo "✅ Deployment completed successfully!"
-              aws ssm get-command-invocation \
-                --command-id "$CMD_ID" \
-                --instance-id "$INSTANCE_ID" \
-                --query 'StandardOutputContent' \
-                --output text || true
-              exit 0
-            elif [ "$STATUS" = "Failed" ] || [ "$STATUS" = "Cancelled" ] || [ "$STATUS" = "TimedOut" ]; then
-              echo "❌ Deployment failed with status: $STATUS"
-              aws ssm get-command-invocation \
-                --command-id "$CMD_ID" \
-                --instance-id "$INSTANCE_ID" \
-                --query 'StandardErrorContent' \
-                --output text || true
-              exit 1
+              --output text 2>&1)
+            STATUS_EXIT_CODE=$?
+            set -e
+            
+            if [ $STATUS_EXIT_CODE -ne 0 ]; then
+              echo "⚠️  Warning: Failed to get command status (exit code $STATUS_EXIT_CODE)"
+              echo "Error: $STATUS"
+              if [ $i -lt 5 ]; then
+                echo "  → Command may still be pending, will retry..."
+              else
+                echo "  → This might indicate the command never reached the instance"
+                echo "  → Check: SSM agent running? Instance has SSM IAM role? Region correct?"
+              fi
+            else
+              echo "  Status: $STATUS"
+              
+              if [ "$STATUS" = "Success" ]; then
+                echo ""
+                echo "✅ Deployment completed successfully!"
+                echo ""
+                echo "=========================================="
+                echo "DEPLOYMENT OUTPUT:"
+                echo "=========================================="
+                aws ssm get-command-invocation \
+                  --command-id "$CMD_ID" \
+                  --instance-id "$INSTANCE_ID" \
+                  --query 'StandardOutputContent' \
+                  --output text || echo "(No output captured)"
+                echo "=========================================="
+                exit 0
+              elif [ "$STATUS" = "Failed" ] || [ "$STATUS" = "Cancelled" ] || [ "$STATUS" = "TimedOut" ]; then
+                echo ""
+                echo "❌ Deployment failed with status: $STATUS"
+                echo ""
+                echo "=========================================="
+                echo "ERROR OUTPUT:"
+                echo "=========================================="
+                aws ssm get-command-invocation \
+                  --command-id "$CMD_ID" \
+                  --instance-id "$INSTANCE_ID" \
+                  --query 'StandardErrorContent' \
+                  --output text || echo "(No error output captured)"
+                echo "=========================================="
+                echo ""
+                echo "STANDARD OUTPUT:"
+                echo "=========================================="
+                aws ssm get-command-invocation \
+                  --command-id "$CMD_ID" \
+                  --instance-id "$INSTANCE_ID" \
+                  --query 'StandardOutputContent' \
+                  --output text || echo "(No standard output captured)"
+                echo "=========================================="
+                exit 1
+              elif [ "$STATUS" = "InProgress" ] || [ "$STATUS" = "Pending" ]; then
+                echo "  → Still running..."
+              else
+                echo "  → Unexpected status, will continue monitoring..."
+              fi
             fi
+            
             sleep 10
           done
+          
+          echo ""
           echo "⏱️ Deployment timed out after 10 minutes"
+          echo "Last known status: $STATUS"
+          echo ""
+          echo "Attempting to retrieve any available output..."
+          aws ssm get-command-invocation \
+            --command-id "$CMD_ID" \
+            --instance-id "$INSTANCE_ID" \
+            --query 'StandardOutputContent' \
+            --output text || echo "(No output available)"
           exit 1
 
       - name: Health check (external)
         run: |
+          echo "=========================================="
+          echo "DEBUG: External Health Check"
+          echo "=========================================="
+          
           sleep 15
+          
           if [ "${{ github.event.inputs.environment }}" = "production" ]; then
             ENDPOINT="${{ secrets.PROD_URL }}"
           else
             ENDPOINT="${{ secrets.STAGING_URL }}"
           fi
-          echo "Testing endpoint: $ENDPOINT"
-          if curl -sf "$ENDPOINT"; then
-            echo "External endpoint OK"
-          else
-            echo "⚠️  External health check failed (check security groups / ALB / public IP)"
+          
+          if [ -z "$ENDPOINT" ]; then
+            echo "⚠️  Warning: No endpoint URL configured"
+            echo "  → Set STAGING_URL or PROD_URL secret to enable external health checks"
+            echo "=========================================="
+            exit 0
           fi
-          # Try prediction endpoint (non-fatal)
-          curl -sf -X POST "$ENDPOINT/predict" -H "Content-Type: application/json" -d '{"features":[7.0,200.0,20000.0,7.5,400.0,200.0,15.0,20.0,350.0]}' || echo "⚠️ Prediction endpoint test failed"
+          
+          echo "Testing endpoint: $ENDPOINT"
+          echo ""
+          
+          echo "Test 1: GET / (homepage)"
+          if curl -sf -m 10 "$ENDPOINT"; then
+            echo "✓ Homepage responded successfully"
+          else
+            echo "✗ Homepage check failed"
+            echo "  Possible causes:"
+            echo "  - Security group not allowing inbound traffic"
+            echo "  - No public IP or elastic IP assigned"
+            echo "  - ALB/Load balancer not configured"
+            echo "  - Application not started correctly"
+          fi
+          
+          echo ""
+          echo "Test 2: POST /predict (prediction endpoint)"
+          PREDICT_RESPONSE=$(curl -sf -m 10 -X POST "$ENDPOINT/predict" \
+            -H "Content-Type: application/json" \
+            -d '{"features":[7.0,200.0,20000.0,7.5,400.0,200.0,15.0,20.0,350.0]}' 2>&1 || echo "FAILED")
+          
+          if [ "$PREDICT_RESPONSE" != "FAILED" ]; then
+            echo "✓ Prediction endpoint responded"
+            echo "Response: $PREDICT_RESPONSE"
+          else
+            echo "✗ Prediction endpoint check failed"
+          fi
+          
+          echo "=========================================="
 
       - name: Deployment summary
         if: always()
