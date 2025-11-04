@@ -50,11 +50,52 @@ jobs:
           
           echo "image_uri=${{ secrets.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:${{ github.event.inputs.image_tag }}" >> $GITHUB_OUTPUT
 
+      # Resolve a valid EC2 instance ID (from secret or by tag)
+      - name: Resolve EC2 instance ID
+        id: resolve-instance
+        run: |
+          set -e
+          CANDIDATE_ID="${{ steps.vars.outputs.instance_id }}"
+          RESOLVED_ID=""
+
+          # Validate provided instance id format (i-xxxxxxxx or i-xxxxxxxxxxxxxxxxx)
+          if [[ "$CANDIDATE_ID" =~ ^i-([0-9a-f]{8}|[0-9a-f]{17})$ ]]; then
+            RESOLVED_ID="$CANDIDATE_ID"
+          else
+            echo "Provided instance_id is empty or invalid; attempting to resolve by tag..."
+            if [ "${{ github.event.inputs.environment }}" == "production" ]; then
+              TAG_NAME="${{ secrets.PROD_EC2_TAG_NAME }}"
+              [ -z "$TAG_NAME" ] && TAG_NAME="mlops-production"
+            else
+              TAG_NAME="${{ secrets.STAGING_EC2_TAG_NAME }}"
+              [ -z "$TAG_NAME" ] && TAG_NAME="mlops-staging"
+            fi
+            echo "Using tag Name=$TAG_NAME to find a running instance in ${{ env.AWS_REGION }}"
+            RESOLVED_ID=$(aws ec2 describe-instances \
+              --region "${{ env.AWS_REGION }}" \
+              --filters "Name=tag:Name,Values=$TAG_NAME" "Name=instance-state-name,Values=running" \
+              --query 'Reservations[0].Instances[0].InstanceId' \
+              --output text 2>/dev/null || echo "")
+
+            # aws may return 'None' if not found
+            if [ "$RESOLVED_ID" = "None" ]; then RESOLVED_ID=""; fi
+          fi
+
+          if [ -z "$RESOLVED_ID" ]; then
+            echo "ERROR: Could not resolve a valid EC2 instance ID."
+            echo "- Provide a valid instance ID via secrets STAGING_EC2_INSTANCE_ID/PROD_EC2_INSTANCE_ID"
+            echo "- Or tag your instance Name=mlops-staging (or mlops-production) or set STAGING_EC2_TAG_NAME/PROD_EC2_TAG_NAME"
+            exit 1
+          fi
+
+          echo "Resolved instance id: $RESOLVED_ID"
+          echo "resolved_instance_id=$RESOLVED_ID" >> $GITHUB_OUTPUT
+
       - name: Deploy via SSM Run Command
         run: |
           # Build SSM command dynamically (S3 output is optional)
           SSM_CMD="aws ssm send-command \
-            --instance-ids \"${{ steps.vars.outputs.instance_id }}\" \
+            --instance-ids \"${{ steps.resolve-instance.outputs.resolved_instance_id }}\" \
             --document-name \"AWS-RunShellScript\" \
             --comment \"Deploy ${{ env.ECR_REPOSITORY }}:${{ github.event.inputs.image_tag }} to ${{ github.event.inputs.environment }}\" \
             --parameters 'commands=[
@@ -92,7 +133,7 @@ jobs:
           for i in {1..60}; do
             STATUS=$(aws ssm get-command-invocation \
               --command-id ${{ env.command_id }} \
-              --instance-id ${{ steps.vars.outputs.instance_id }} \
+              --instance-id ${{ steps.resolve-instance.outputs.resolved_instance_id }} \
               --query 'Status' \
               --output text)
             
@@ -102,7 +143,7 @@ jobs:
               echo "✅ Deployment completed successfully!"
               aws ssm get-command-invocation \
                 --command-id ${{ env.command_id }} \
-                --instance-id ${{ steps.vars.outputs.instance_id }} \
+                --instance-id ${{ steps.resolve-instance.outputs.resolved_instance_id }} \
                 --query 'StandardOutputContent' \
                 --output text
               exit 0
@@ -110,7 +151,7 @@ jobs:
               echo "❌ Deployment failed with status: $STATUS"
               aws ssm get-command-invocation \
                 --command-id ${{ env.command_id }} \
-                --instance-id ${{ steps.vars.outputs.instance_id }} \
+                --instance-id ${{ steps.resolve-instance.outputs.resolved_instance_id }} \
                 --query 'StandardErrorContent' \
                 --output text
               exit 1
@@ -149,7 +190,7 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "- **Environment**: ${{ github.event.inputs.environment }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Image**: ${{ steps.vars.outputs.image_uri }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Instance ID**: ${{ steps.vars.outputs.instance_id }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Instance ID**: ${{ steps.resolve-instance.outputs.resolved_instance_id }}" >> $GITHUB_STEP_SUMMARY
           echo "- **SSM Command ID**: ${{ env.command_id }}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "View logs in CloudWatch: /aws/ssm/mlops-deploy" >> $GITHUB_STEP_SUMMARY
