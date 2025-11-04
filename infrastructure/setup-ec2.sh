@@ -1,7 +1,7 @@
 #!/bin/bash
 # EC2 Instance Setup Script for MLOps Pipeline
 
-set -e
+set +e
 
 echo "🔧 Setting up EC2 instance for MLOps deployment..."
 

@@ -6,17 +6,26 @@ stages:
       - src/data/ingest.py
     outs:
       - data/processed/water_potability.csv
+  
   preprocess:
     cmd: python -m src.data.preprocess --params configs/params.yaml
     deps:
       - data/processed/water_potability.csv
       - src/data/preprocess.py
       - configs/params.yaml
+    params:
+      - configs/params.yaml:
+          - preprocess.imputation_strategy
+          - preprocess.scale
+          - preprocess.test_size
+          - preprocess.val_size
+          - preprocess.random_state
     outs: 
       - data/processed/train.csv
       - data/processed/val.csv
       - data/processed/test.csv
       - data/processed/transformer.joblib
+  
   train:
     cmd: python -m src.models.train --params configs/params.yaml
     deps:
@@ -24,9 +33,17 @@ stages:
       - data/processed/val.csv
       - src/models/train.py
       - configs/params.yaml
+    params:
+      - configs/params.yaml:
+          - model.type
+          - train.n_trials
+          - train.cv_folds
+    metrics:
+      - artifacts/metrics/train_metrics.json:
+          cache: false
     outs:
       - app/model_registry/model.joblib
-      - artifacts/metrics/train_metrics.json
+  
   evaluate:
     cmd: python -m src.models.evaluate --params configs/params.yaml
     deps:
@@ -34,9 +51,16 @@ stages:
       - app/model_registry/model.joblib
       - src/models/evaluate.py
       - configs/params.yaml
-    outs:
-      - artifacts/metrics/test_metrics.json
-      - artifacts/plots/roc_curve.png
-      - artifacts/plots/confusion_matrix.png
+    params:
+      - configs/params.yaml:
+          - evaluate.threshold
+    metrics:
+      - artifacts/metrics/test_metrics.json:
+          cache: false
+    plots:
+      - artifacts/plots/roc_curve.png:
+          cache: false
+      - artifacts/plots/confusion_matrix.png:
+          cache: false
 
 

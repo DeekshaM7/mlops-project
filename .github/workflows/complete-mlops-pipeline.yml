@@ -15,7 +15,7 @@ on:
         options: [staging, production]
 
 env:
-  AWS_REGION: us-east-1
+  AWS_REGION: ap-south-1
   ECR_REPOSITORY: water-quality-ml
   MODEL_NAME: water-potability-classifier
   PYTHON_VERSION: '3.12'

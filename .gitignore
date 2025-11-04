@@ -19,5 +19,6 @@ artifacts/
 .dvc/
 !.dvc
 .env
-
+mlops-user_accessKeys.csv
+mlops-user_credentials.csv
 
