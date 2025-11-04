@@ -1,5 +1,3 @@
-
-
 from flask import Flask, request, jsonify, send_file, abort
 import os
 import joblib
