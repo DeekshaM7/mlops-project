@@ -1,0 +1,34 @@
+on: workflow_dispatch
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Save SSH private key
+        run: |
+          # Use printf '%b' to convert any \n sequences into real newlines safely
+          printf '%b' "${{ secrets.EC2_SSH_KEY }}" > /tmp/deploy_key
+          chmod 600 /tmp/deploy_key
+
+      - name: Debug: show key head (masked)
+        run: |
+          # Only show a hash / first line to confirm presence, avoid printing secret contents
+          head -n 1 /tmp/deploy_key | sed -E 's/.+/.hidden_private_key_header./'
+
+      - name: Deploy to staging EC2 (via key_path)
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.STAGING_EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key_path: /tmp/deploy_key
+          port: 22
+          script: |
+            cd /opt/mlops-staging
+            git pull origin master
+            export IMAGE_URI="${{ needs.build-container.outputs.image-uri }}"
+            export MLFLOW_TRACKING_URI="${{ secrets.MLFLOW_TRACKING_URI }}"
+            export AWS_REGION="${{ env.AWS_REGION }}"
+            ./scripts/deploy.sh staging "$IMAGE_URI"
