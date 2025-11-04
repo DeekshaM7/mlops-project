@@ -29,6 +29,6 @@ jobs:
             cd /opt/mlops-staging
             git pull origin master
             export IMAGE_URI="${{ needs.build-container.outputs.image-uri }}"
-            export MLFLOW_TRACKING_URI="${{ secrets.MLFLOW_TRACKING_URI }}"
+            # export MLFLOW_TRACKING_URI="${{ secrets.MLFLOW_TRACKING_URI }}"
             export AWS_REGION="${{ env.AWS_REGION }}"
             ./scripts/deploy.sh staging "$IMAGE_URI"
