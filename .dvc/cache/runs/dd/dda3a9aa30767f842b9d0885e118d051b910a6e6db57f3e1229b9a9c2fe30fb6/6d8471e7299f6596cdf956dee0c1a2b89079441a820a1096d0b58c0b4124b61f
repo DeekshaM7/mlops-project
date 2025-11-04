@@ -1,0 +1,32 @@
+cmd: python -m src.models.train --params configs/params.yaml
+deps:
+- path: configs/params.yaml
+  hash: md5
+  md5: 7db577e79af1853c85f6c22697f21d66
+  size: 628
+- path: data/processed/train.csv
+  hash: md5
+  md5: 79e20acbfe76e65358572fbee354f8f5
+  size: 414033
+- path: data/processed/val.csv
+  hash: md5
+  md5: e08563a562b21f6a4589eb9081a77977
+  size: 59295
+- path: src/models/train.py
+  hash: md5
+  md5: 78232d84c5c1301ae011919c1442e7bd
+  size: 7850
+params:
+  configs/params.yaml:
+    model.type: random_forest
+    train.cv_folds: 5
+    train.n_trials: 20
+outs:
+- path: app/model_registry/model.joblib
+  hash: md5
+  md5: a88381261cedcbcd081bc06b373dd5b9
+  size: 11672953
+- path: artifacts/metrics/train_metrics.json
+  hash: md5
+  md5: 4dca76301fb776b09a72deabd2bc3dce
+  size: 232

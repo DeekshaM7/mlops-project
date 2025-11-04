@@ -22,8 +22,8 @@ stages:
     deps:
     - path: configs/params.yaml
       hash: md5
-      md5: fe4c078640b0d9d5379f794f441184a1
-      size: 593
+      md5: 7db577e79af1853c85f6c22697f21d66
+      size: 628
     - path: data/processed/water_potability.csv
       hash: md5
       md5: a5eeae83d792e40da6c2f9e1eab945fc
@@ -32,6 +32,13 @@ stages:
       hash: md5
       md5: 71f0746df1fc8b9069dffab76f992eb8
       size: 3916
+    params:
+      configs/params.yaml:
+        preprocess.imputation_strategy: median
+        preprocess.random_state: 42
+        preprocess.scale: true
+        preprocess.test_size: 0.2
+        preprocess.val_size: 0.1
     outs:
     - path: data/processed/test.csv
       hash: md5
@@ -43,8 +50,8 @@ stages:
       size: 414033
     - path: data/processed/transformer.joblib
       hash: md5
-      md5: c354d36c7f1b63506e1bdee047eb01ff
-      size: 2616
+      md5: aabc179a1a126eb631b32391a19c84f1
+      size: 2837
     - path: data/processed/val.csv
       hash: md5
       md5: e08563a562b21f6a4589eb9081a77977
@@ -54,8 +61,8 @@ stages:
     deps:
     - path: configs/params.yaml
       hash: md5
-      md5: fe4c078640b0d9d5379f794f441184a1
-      size: 593
+      md5: 7db577e79af1853c85f6c22697f21d66
+      size: 628
     - path: data/processed/train.csv
       hash: md5
       md5: 79e20acbfe76e65358572fbee354f8f5
@@ -66,28 +73,33 @@ stages:
       size: 59295
     - path: src/models/train.py
       hash: md5
-      md5: f49b8cac0172978ce7e33e1920c27618
-      size: 4437
+      md5: 78232d84c5c1301ae011919c1442e7bd
+      size: 7850
+    params:
+      configs/params.yaml:
+        model.type: random_forest
+        train.cv_folds: 5
+        train.n_trials: 20
     outs:
     - path: app/model_registry/model.joblib
       hash: md5
-      md5: 4d8e2d43b23c5db123e589787b4b3a59
-      size: 15487193
+      md5: a88381261cedcbcd081bc06b373dd5b9
+      size: 11672953
     - path: artifacts/metrics/train_metrics.json
       hash: md5
-      md5: c43e8da02a180edaf981839b4d25a457
-      size: 156
+      md5: 4dca76301fb776b09a72deabd2bc3dce
+      size: 232
   evaluate:
     cmd: python -m src.models.evaluate --params configs/params.yaml
     deps:
     - path: app/model_registry/model.joblib
       hash: md5
-      md5: 4d8e2d43b23c5db123e589787b4b3a59
-      size: 15487193
+      md5: a88381261cedcbcd081bc06b373dd5b9
+      size: 11672953
     - path: configs/params.yaml
       hash: md5
-      md5: fe4c078640b0d9d5379f794f441184a1
-      size: 593
+      md5: 7db577e79af1853c85f6c22697f21d66
+      size: 628
     - path: data/processed/test.csv
       hash: md5
       md5: 74a05764f946ead1a0ab3add13ce8c1b
@@ -96,16 +108,19 @@ stages:
       hash: md5
       md5: 109bebe2b20cb7cf9ef17bfa0250e999
       size: 2150
+    params:
+      configs/params.yaml:
+        evaluate.threshold: 0.5
     outs:
     - path: artifacts/metrics/test_metrics.json
       hash: md5
-      md5: 82456304b6f30b8742af8f239f40a376
-      size: 101
+      md5: 540f9f3a4b93c9e4285c86fba5f2a464
+      size: 95
     - path: artifacts/plots/confusion_matrix.png
       hash: md5
-      md5: dd513ba172b2fda3856d98bd27ce9985
-      size: 22968
+      md5: 43ddd7b5a6f2f76975bc50877e7784fd
+      size: 23087
     - path: artifacts/plots/roc_curve.png
       hash: md5
-      md5: 4940089df2d3dfa248f1611f3255862e
-      size: 36881
+      md5: 4bbc23e00a6d90f2f9ea3fb064225eea
+      size: 37034
