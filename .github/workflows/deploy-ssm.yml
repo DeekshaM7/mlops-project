@@ -1,0 +1,147 @@
+name: Deploy to EC2 via SSM (No SSH)
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy'
+        required: true
+        default: 'staging'
+        type: choice
+        options: [staging, production]
+      image_tag:
+        description: 'Image tag to deploy'
+        required: false
+        default: 'latest'
+
+env:
+  AWS_REGION: ap-south-1
+  ECR_REPOSITORY: water-quality-ml
+
+jobs:
+  deploy-via-ssm:
+    name: Deploy to EC2 via AWS Systems Manager
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Set deployment variables
+        id: vars
+        run: |
+          if [ "${{ github.event.inputs.environment }}" == "production" ]; then
+            echo "instance_id=${{ secrets.PROD_EC2_INSTANCE_ID }}" >> $GITHUB_OUTPUT
+            echo "app_dir=/opt/mlops-production" >> $GITHUB_OUTPUT
+            echo "app_port=8000" >> $GITHUB_OUTPUT
+          else
+            echo "instance_id=${{ secrets.STAGING_EC2_INSTANCE_ID }}" >> $GITHUB_OUTPUT
+            echo "app_dir=/opt/mlops-staging" >> $GITHUB_OUTPUT
+            echo "app_port=8000" >> $GITHUB_OUTPUT
+          fi
+          
+          echo "image_uri=${{ secrets.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:${{ github.event.inputs.image_tag }}" >> $GITHUB_OUTPUT
+
+      - name: Deploy via SSM Run Command
+        run: |
+          aws ssm send-command \
+            --instance-ids "${{ steps.vars.outputs.instance_id }}" \
+            --document-name "AWS-RunShellScript" \
+            --comment "Deploy ${{ env.ECR_REPOSITORY }}:${{ github.event.inputs.image_tag }} to ${{ github.event.inputs.environment }}" \
+            --parameters 'commands=[
+              "echo \"Starting deployment...\"",
+              "cd ${{ steps.vars.outputs.app_dir }}",
+              "aws ecr get-login-password --region ${{ env.AWS_REGION }} | docker login --username AWS --password-stdin ${{ secrets.ECR_REGISTRY }}",
+              "docker pull ${{ steps.vars.outputs.image_uri }}",
+              "docker stop water-quality-app || true",
+              "docker rm water-quality-app || true",
+              "docker run -d --name water-quality-app --restart unless-stopped -p ${{ steps.vars.outputs.app_port }}:8000 -e AWS_REGION=${{ env.AWS_REGION }} ${{ steps.vars.outputs.image_uri }}",
+              "sleep 10",
+              "curl -f http://localhost:${{ steps.vars.outputs.app_port }}/ || exit 1",
+              "echo \"Deployment successful!\""
+            ]' \
+            --output-s3-bucket-name "${{ secrets.SSM_OUTPUT_BUCKET }}" \
+            --output-s3-key-prefix "ssm-logs/${{ github.event.inputs.environment }}" \
+            --cloud-watch-output-config '{"CloudWatchLogGroupName":"/aws/ssm/mlops-deploy","CloudWatchOutputEnabled":true}' \
+            --query 'Command.CommandId' \
+            --output text > command_id.txt
+          
+          COMMAND_ID=$(cat command_id.txt)
+          echo "Command ID: $COMMAND_ID"
+          echo "command_id=$COMMAND_ID" >> $GITHUB_ENV
+
+      - name: Wait for deployment to complete
+        run: |
+          echo "Waiting for SSM command to complete..."
+          for i in {1..60}; do
+            STATUS=$(aws ssm get-command-invocation \
+              --command-id ${{ env.command_id }} \
+              --instance-id ${{ steps.vars.outputs.instance_id }} \
+              --query 'Status' \
+              --output text)
+            
+            echo "Attempt $i: Status = $STATUS"
+            
+            if [ "$STATUS" == "Success" ]; then
+              echo "✅ Deployment completed successfully!"
+              aws ssm get-command-invocation \
+                --command-id ${{ env.command_id }} \
+                --instance-id ${{ steps.vars.outputs.instance_id }} \
+                --query 'StandardOutputContent' \
+                --output text
+              exit 0
+            elif [ "$STATUS" == "Failed" ] || [ "$STATUS" == "Cancelled" ] || [ "$STATUS" == "TimedOut" ]; then
+              echo "❌ Deployment failed with status: $STATUS"
+              aws ssm get-command-invocation \
+                --command-id ${{ env.command_id }} \
+                --instance-id ${{ steps.vars.outputs.instance_id }} \
+                --query 'StandardErrorContent' \
+                --output text
+              exit 1
+            fi
+            
+            sleep 10
+          done
+          
+          echo "⏱️ Deployment timed out after 10 minutes"
+          exit 1
+
+      - name: Health check
+        run: |
+          # Give app a moment to fully start
+          sleep 15
+          
+          if [ "${{ github.event.inputs.environment }}" == "production" ]; then
+            ENDPOINT="${{ secrets.PROD_URL }}"
+          else
+            ENDPOINT="${{ secrets.STAGING_URL }}"
+          fi
+          
+          echo "Testing endpoint: $ENDPOINT"
+          curl -f "$ENDPOINT" || echo "⚠️  External health check failed (check security groups)"
+          
+          # Try prediction endpoint
+          curl -f -X POST "$ENDPOINT/predict" \
+            -H "Content-Type: application/json" \
+            -d '{"features": [7.0, 200.0, 20000.0, 7.5, 400.0, 200.0, 15.0, 20.0, 350.0]}' \
+            || echo "⚠️  Prediction endpoint test failed"
+
+      - name: Deployment summary
+        if: always()
+        run: |
+          echo "## Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Environment**: ${{ github.event.inputs.environment }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Image**: ${{ steps.vars.outputs.image_uri }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Instance ID**: ${{ steps.vars.outputs.instance_id }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **SSM Command ID**: ${{ env.command_id }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "View logs in CloudWatch: /aws/ssm/mlops-deploy" >> $GITHUB_STEP_SUMMARY
