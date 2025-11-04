@@ -268,6 +268,7 @@ jobs:
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Deploy to staging EC2
+        if: ${{ secrets.STAGING_EC2_HOST != '' }}
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.STAGING_EC2_HOST }}
@@ -287,6 +288,15 @@ jobs:
             
             # Run deployment
             ./scripts/deploy.sh staging $IMAGE_URI
+      
+      - name: Skip staging deployment (no EC2 configured)
+        if: ${{ secrets.STAGING_EC2_HOST == '' }}
+        run: |
+          echo "⚠️  Staging EC2 deployment skipped - STAGING_EC2_HOST secret not configured"
+          echo "To enable deployment, configure these GitHub secrets:"
+          echo "  - STAGING_EC2_HOST: Your staging EC2 instance hostname/IP"
+          echo "  - EC2_USER: SSH username (e.g., ubuntu)"
+          echo "  - EC2_SSH_KEY: Private SSH key for EC2 access"
 
       - name: Run smoke tests
         run: |
@@ -325,6 +335,7 @@ jobs:
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Blue-Green deployment to production
+        if: ${{ secrets.PROD_EC2_HOST != '' }}
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.PROD_EC2_HOST }}
@@ -339,6 +350,15 @@ jobs:
             
             # Deploy to green environment
             ./scripts/blue-green-deploy.sh $IMAGE_URI
+      
+      - name: Skip production deployment (no EC2 configured)
+        if: ${{ secrets.PROD_EC2_HOST == '' }}
+        run: |
+          echo "⚠️  Production EC2 deployment skipped - PROD_EC2_HOST secret not configured"
+          echo "To enable deployment, configure these GitHub secrets:"
+          echo "  - PROD_EC2_HOST: Your production EC2 instance hostname/IP"
+          echo "  - EC2_USER: SSH username (e.g., ubuntu)"
+          echo "  - EC2_SSH_KEY: Private SSH key for EC2 access"
 
       - name: Production health checks
         run: |
