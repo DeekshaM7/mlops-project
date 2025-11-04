@@ -1,4 +1,7 @@
-on: workflow_dispatch
+name: Deploy to staging (fix)
+
+on:
+  workflow_dispatch:
 
 jobs:
   deploy:
@@ -13,7 +16,7 @@ jobs:
           printf '%b' "${{ secrets.EC2_SSH_KEY }}" > /tmp/deploy_key
           chmod 600 /tmp/deploy_key
 
-      - name: Debug: show key head (masked)
+      - name: Debug - show key head (masked)
         run: |
           # Only show a hash / first line to confirm presence, avoid printing secret contents
           head -n 1 /tmp/deploy_key | sed -E 's/.+/.hidden_private_key_header./'
