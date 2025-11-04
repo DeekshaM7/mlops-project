@@ -172,97 +172,195 @@ jobs:
           echo "Image: ${IMAGE_URI}"
           echo ""
 
-          # Step 1: Install Docker (if missing)
+          # Step 1: Install Docker (Amazon Linux optimized)
           echo "[1/6] Checking Docker installation..."
           if ! command -v docker &> /dev/null; then
-            echo "Docker not found. Installing..."
-            sudo apt-get update -qq
-            sudo apt-get install -y -qq apt-transport-https ca-certificates curl software-properties-common gnupg
-            curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
-            echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
-            sudo apt-get update -qq
-            sudo apt-get install -y -qq docker-ce docker-ce-cli containerd.io
-            sudo systemctl enable docker --now
-            sudo usermod -aG docker \$USER || true
-            echo "✓ Docker installed"
+            echo "Docker not found. Installing for Amazon Linux..."
+            
+            # Update system packages
+            sudo yum update -y
+            
+            # Install Docker from Amazon Linux extras or standard repo
+            if yum list available | grep -q amazon-linux-extras; then
+              echo "  → Using Amazon Linux Extras to install Docker"
+              sudo amazon-linux-extras install docker -y
+            else
+              echo "  → Using standard yum repository to install Docker"
+              sudo yum install -y docker
+            fi
+            
+            # Start and enable Docker service
+            sudo systemctl start docker
+            sudo systemctl enable docker
+            
+            # Add ec2-user to docker group (Amazon Linux default user)
+            sudo usermod -aG docker ec2-user || sudo usermod -aG docker \$USER
+            
+            echo "✓ Docker installed successfully"
           else
-            echo "✓ Docker already installed: $(docker --version)"
+            echo "✓ Docker already installed: \$(docker --version)"
           fi
 
-          sudo systemctl is-active --quiet docker || sudo systemctl start docker
+          # Ensure Docker service is running
+          if ! sudo systemctl is-active --quiet docker; then
+            echo "  → Starting Docker service"
+            sudo systemctl start docker
+          fi
           echo ""
 
-          # Step 2: Ensure AWS CLI is present
+          # Step 2: Ensure AWS CLI is present (Amazon Linux optimized)
           echo "[2/6] Checking AWS CLI..."
           if ! command -v aws &> /dev/null; then
             echo "AWS CLI not found. Installing..."
-            curl -fsSL https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip -o /tmp/awscliv2.zip
-            sudo apt-get install -y -qq unzip
+            
+            # Install unzip if not present
+            if ! command -v unzip &> /dev/null; then
+              sudo yum install -y unzip
+            fi
+            
+            # Download and install AWS CLI v2
+            curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o /tmp/awscliv2.zip
             unzip -q /tmp/awscliv2.zip -d /tmp
             sudo /tmp/aws/install --update
             rm -rf /tmp/awscliv2.zip /tmp/aws
-            echo "✓ AWS CLI installed"
+            
+            echo "✓ AWS CLI installed successfully"
           else
-            echo "✓ AWS CLI already installed: $(aws --version)"
+            echo "✓ AWS CLI already installed: \$(aws --version)"
           fi
           echo ""
 
           # Step 3: Prepare application directory
           echo "[3/6] Preparing application directory..."
           sudo mkdir -p "${APP_DIR}"
-          sudo chown \$USER:\$USER "${APP_DIR}"
+          
+          # Set proper ownership (use ec2-user for Amazon Linux)
+          if id -u ec2-user &>/dev/null; then
+            sudo chown ec2-user:ec2-user "${APP_DIR}"
+          else
+            sudo chown \$USER:\$USER "${APP_DIR}"
+          fi
+          
           cd "${APP_DIR}"
           echo "✓ App directory ready: ${APP_DIR}"
           echo ""
 
-          # Step 4: Pull image from ECR
+          # Step 4: Pull image from ECR (Amazon Linux optimized)
           echo "[4/6] Pulling image from ECR..."
+          
+          # Configure AWS credentials from EC2 instance metadata if available
+          if curl -s -m 5 http://169.254.169.254/latest/meta-data/iam/security-credentials/ &>/dev/null; then
+            echo "  → Using EC2 instance IAM role for ECR authentication"
+          else
+            echo "  → Using configured AWS credentials for ECR authentication"
+          fi
+          
+          # Login to ECR
           aws ecr get-login-password --region "${AWS_REGION}" | sudo docker login --username AWS --password-stdin "${ECR_REGISTRY}"
+          
+          # Pull the image
+          echo "  → Pulling Docker image: ${IMAGE_URI}"
           sudo docker pull "${IMAGE_URI}"
           echo "✓ Image pulled successfully"
           echo ""
 
-          # Step 5: Deploy container
+          # Step 5: Deploy container (Amazon Linux optimized)
           echo "[5/6] Deploying container..."
-          sudo docker stop water-quality-app 2>/dev/null || echo "  (no existing container to stop)"
-          sudo docker rm water-quality-app 2>/dev/null || echo "  (no existing container to remove)"
+          
+          # Stop and remove existing container if it exists
+          if sudo docker ps -q -f name=water-quality-app | grep -q .; then
+            echo "  → Stopping existing container"
+            sudo docker stop water-quality-app
+          fi
+          
+          if sudo docker ps -aq -f name=water-quality-app | grep -q .; then
+            echo "  → Removing existing container"
+            sudo docker rm water-quality-app
+          fi
+          
+          # Run the new container
+          echo "  → Starting new container"
           sudo docker run -d \
             --name water-quality-app \
             --restart unless-stopped \
             -p "${APP_PORT}":8000 \
             -e AWS_REGION="${AWS_REGION}" \
             -e ENVIRONMENT="${ENVIRONMENT}" \
+            --log-driver=json-file \
+            --log-opt max-size=100m \
+            --log-opt max-file=3 \
             "${IMAGE_URI}"
-          echo "✓ Container started"
+          
+          echo "✓ Container started successfully"
+          echo "  → Container ID: \$(sudo docker ps -q -f name=water-quality-app)"
           echo ""
 
-          # Step 6: Health check
+          # Step 6: Health check (Amazon Linux optimized)
           echo "[6/6] Running health check..."
+          
+          # Install curl if not present
+          if ! command -v curl &> /dev/null; then
+            echo "  → Installing curl for health checks"
+            sudo yum install -y curl
+          fi
+          
+          # Wait for container to be ready
+          echo "  → Waiting for container to start..."
+          sleep 5
+          
+          # Perform health check
           for i in {1..30}; do
-            if curl -sf http://localhost:"${APP_PORT}"/ >/dev/null 2>&1; then
+            if curl -sf -m 5 http://localhost:"${APP_PORT}"/ >/dev/null 2>&1; then
               echo "✓ Health check passed! Application is responding."
-              curl -s http://localhost:"${APP_PORT}"/ | head -n 3
+              echo "  → Response preview:"
+              curl -s -m 5 http://localhost:"${APP_PORT}"/ | head -n 3 || echo "    (Could not fetch response preview)"
               break
             fi
             if [ \$i -eq 30 ]; then
               echo "✗ Health check failed after 30 attempts"
-              echo "Container logs:"
-              sudo docker logs water-quality-app --tail 200 || true
+              echo ""
+              echo "Container status:"
+              sudo docker ps -f name=water-quality-app
+              echo ""
+              echo "Container logs (last 50 lines):"
+              sudo docker logs water-quality-app --tail 50 || true
+              echo ""
+              echo "System resources:"
+              df -h | head -n 5
+              free -h
               exit 1
             fi
-            echo "  Waiting for app to start (attempt \$i/30)..."
+            echo "  → Waiting for app to start (attempt \$i/30)..."
             sleep 2
           done
           echo ""
 
-          # Summary
-          echo "===== Deployment Complete ====="
-          echo "Container: water-quality-app"
-          echo "Status: $(sudo docker inspect -f '{{.State.Status}}' water-quality-app)"
-          echo "Port: ${APP_PORT}"
+          # Summary (Amazon Linux optimized)
+          echo ""
+          echo "========================================="
+          echo "       DEPLOYMENT COMPLETED SUCCESSFULLY"
+          echo "========================================="
+          echo "Container Name: water-quality-app"
+          echo "Status: \$(sudo docker inspect -f '{{.State.Status}}' water-quality-app 2>/dev/null || echo 'Unknown')"
+          echo "Health: \$(sudo docker inspect -f '{{.State.Health.Status}}' water-quality-app 2>/dev/null || echo 'N/A')"
+          echo "Port Mapping: ${APP_PORT}:8000"
           echo "Image: ${IMAGE_URI}"
-          echo "Started: $(sudo docker inspect -f '{{.State.StartedAt}}' water-quality-app)"
-          echo "==============================="
+          echo "Started: \$(sudo docker inspect -f '{{.State.StartedAt}}' water-quality-app 2>/dev/null || echo 'Unknown')"
+          echo ""
+          echo "Network Information:"
+          echo "  → Local endpoint: http://localhost:${APP_PORT}/"
+          if command -v curl &> /dev/null; then
+            echo "  → Public IP: \$(curl -s -m 3 http://169.254.169.254/latest/meta-data/public-ipv4 2>/dev/null || echo 'Not available')"
+            echo "  → Private IP: \$(curl -s -m 3 http://169.254.169.254/latest/meta-data/local-ipv4 2>/dev/null || echo 'Not available')"
+          fi
+          echo ""
+          echo "Container Resources:"
+          CONTAINER_ID=\$(sudo docker ps -q -f name=water-quality-app)
+          if [ -n "\$CONTAINER_ID" ]; then
+            echo "  → Memory usage: \$(sudo docker stats --no-stream --format 'table {{.MemUsage}}' \$CONTAINER_ID | tail -1)"
+            echo "  → CPU usage: \$(sudo docker stats --no-stream --format 'table {{.CPUPerc}}' \$CONTAINER_ID | tail -1)"
+          fi
+          echo "========================================="
           EOF
 
           echo "✓ Step 1 complete: Script content created"
