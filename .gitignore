@@ -1,24 +1,235 @@
-.venv/
+# ============================================
+# Python
+# ============================================
+# Byte-compiled / optimized / DLL files
 __pycache__/
-.pytest_cache/
-.ipynb_checkpoints/
+*.py[cod]
+*$py.class
+*.so
 *.pyc
 *.pyo
 *.pyd
-*.DS_Store
-*.log
-dist/
+.Python
+
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
 build/
-site/
-coverage.xml
-.coverage*
-model_registry/
-data/processed/
-app/model_registry/
-artifacts/
-.dvc/
-!.dvc
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# ============================================
+# Virtual Environments
+# ============================================
+venv/
+env/
+ENV/
+.venv
 .env
+venv.bak/
+env.bak/
+
+# ============================================
+# DVC - Data Version Control
+# ============================================
+# DVC temporary files and locks
+.dvc/tmp/
+.dvc/cache/
+.dvc/plots/
+.dvc/tmp/rwlock
+.dvc/tmp/exps/
+.dvc/tmp/lock
+.dvc/tmp/index/
+.dvc/tmp/runs/
+
+# ============================================
+# Data Files (Tracked by DVC)
+# ============================================
+# Raw data
+data/raw/*.csv
+data/raw/*.parquet
+data/raw/*.feather
+
+# Processed data
+data/processed/
+data/processed/*.csv
+data/processed/*.pkl
+data/processed/*.joblib
+data/processed/*.parquet
+
+# ============================================
+# Model Artifacts
+# ============================================
+model_registry/
+app/model_registry/
+models/*.pkl
+models/*.joblib
+*.h5
+*.hdf5
+*.pb
+*.onnx
+*.pt
+*.pth
+
+# ============================================
+# MLflow / Experiment Tracking
+# ============================================
+mlruns/
+mlartifacts/
+mlflow.db
+
+# ============================================
+# Artifacts and Outputs
+# ============================================
+artifacts/
+artifacts/metrics/
+artifacts/plots/
+outputs/
+logs/
+*.log
+
+# ============================================
+# Testing
+# ============================================
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+*.cover
+.hypothesis/
+.tox/
+coverage.xml
+nosetests.xml
+*.coveragerc
+
+# ============================================
+# Jupyter Notebook
+# ============================================
+.ipynb_checkpoints/
+*.ipynb
+jupyter_notebook_config.py
+
+# ============================================
+# Type Checking
+# ============================================
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.pyre/
+.pytype/
+
+# ============================================
+# IDE and Editors
+# ============================================
+# VSCode
+.vscode/
+*.code-workspace
+
+# PyCharm
+.idea/
+*.iml
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+# Vim
+*.swp
+*.swo
+*~
+.vim/
+
+# Emacs
+*~
+\#*\#
+.\#*
+
+# ============================================
+# Operating Systems
+# ============================================
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+
+# Linux
+*~
+.directory
+.Trash-*
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+*.lnk
+
+# ============================================
+# AWS and Cloud
+# ============================================
+# AWS credentials
+.aws/
+*.pem
+*.key
+*accessKeys.csv
+*credentials.csv
 mlops-user_accessKeys.csv
 mlops-user_credentials.csv
+aws-infrastructure-config.txt
 
+# ============================================
+# Secrets and Environment Variables
+# ============================================
+.env
+.env.local
+.env.*.local
+.envrc
+secrets/
+*.secret
+config.local.*
+
+# ============================================
+# Docker
+# ============================================
+.dockerignore
+docker-compose.override.yml
+
+# ============================================
+# Documentation
+# ============================================
+docs/_build/
+docs/.doctrees/
+site/
+
+# ============================================
+# Miscellaneous
+# ============================================
+# Backup files
+*.bak
+*.backup
+*.tmp
+*.swp
+
+# Lock files (except poetry.lock and Pipfile.lock)
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
