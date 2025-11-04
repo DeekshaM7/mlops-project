@@ -13,16 +13,16 @@ import os
 # Experiment configurations
 EXPERIMENTS: List[Dict[str, Any]] = [
     # Random Forest Experiments (10 experiments)
-    {"name": "rf_exp_1", "model_type": "random_forest", "n_trials": 15, "cv_folds": 5},
-    {"name": "rf_exp_2", "model_type": "random_forest", "n_trials": 20, "cv_folds": 5},
-    {"name": "rf_exp_3", "model_type": "random_forest", "n_trials": 25, "cv_folds": 5},
-    {"name": "rf_exp_4", "model_type": "random_forest", "n_trials": 20, "cv_folds": 3},
-    {"name": "rf_exp_5", "model_type": "random_forest", "n_trials": 20, "cv_folds": 7},
-    {"name": "rf_exp_6", "model_type": "random_forest", "n_trials": 30, "cv_folds": 5},
-    {"name": "rf_exp_7", "model_type": "random_forest", "n_trials": 15, "cv_folds": 3},
-    {"name": "rf_exp_8", "model_type": "random_forest", "n_trials": 25, "cv_folds": 3},
-    {"name": "rf_exp_9", "model_type": "random_forest", "n_trials": 10, "cv_folds": 5},
-    {"name": "rf_exp_10", "model_type": "random_forest", "n_trials": 35, "cv_folds": 5},
+    # {"name": "rf_exp_1", "model_type": "random_forest", "n_trials": 15, "cv_folds": 5},
+    # {"name": "rf_exp_2", "model_type": "random_forest", "n_trials": 20, "cv_folds": 5},
+    # {"name": "rf_exp_3", "model_type": "random_forest", "n_trials": 25, "cv_folds": 5},
+    # {"name": "rf_exp_4", "model_type": "random_forest", "n_trials": 20, "cv_folds": 3},
+    # {"name": "rf_exp_5", "model_type": "random_forest", "n_trials": 20, "cv_folds": 7},
+    # {"name": "rf_exp_6", "model_type": "random_forest", "n_trials": 30, "cv_folds": 5},
+    # {"name": "rf_exp_7", "model_type": "random_forest", "n_trials": 15, "cv_folds": 3},
+    # {"name": "rf_exp_8", "model_type": "random_forest", "n_trials": 25, "cv_folds": 3},
+    # {"name": "rf_exp_9", "model_type": "random_forest", "n_trials": 10, "cv_folds": 5},
+    # {"name": "rf_exp_10", "model_type": "random_forest", "n_trials": 35, "cv_folds": 5},
     # XGBoost Experiments (10 experiments)
     {"name": "xgb_exp_1", "model_type": "xgboost", "n_trials": 15, "cv_folds": 5},
     {"name": "xgb_exp_2", "model_type": "xgboost", "n_trials": 20, "cv_folds": 5},
