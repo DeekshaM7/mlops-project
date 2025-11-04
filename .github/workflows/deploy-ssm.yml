@@ -56,7 +56,8 @@ jobs:
             echo "image_uri=${{ secrets.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:${tag}" >> $GITHUB_OUTPUT
           else
             echo "image_uri=${{ secrets.ECR_URI }}/${{ env.ECR_REPOSITORY }}:${tag}" >> $GITHUB_OUTPUT
-
+          fi
+          
       - name: Resolve EC2 instance ID
         id: resolve-instance
         run: |
