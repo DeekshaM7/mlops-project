@@ -218,7 +218,7 @@ jobs:
           
           # Scan image
           trivy image --format json --output container-scan.json ${{ steps.build.outputs.image-uri }}
-
+      
       - name: Container integration tests
         run: |
           # Start container for testing
