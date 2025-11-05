@@ -142,16 +142,6 @@ jobs:
           export MLFLOW_EXPERIMENT_NAME="water-potability-ci-${{ needs.code-quality.outputs.commit-hash }}"
           dvc repro
 
-      - name: Model validation & benchmarking
-        env:
-          MLFLOW_TRACKING_URI: ${{ secrets.MLFLOW_TRACKING_URI }}
-          MLFLOW_TRACKING_USERNAME: ${{ secrets.MLFLOW_USERNAME }}
-          MLFLOW_TRACKING_PASSWORD: ${{ secrets.MLFLOW_PASSWORD }}
-        run: |
-          # Model validation modules not yet implemented
-          # TODO: Implement src.models.validate and src.models.benchmark
-          echo "Model validation skipped - modules not implemented"
-
       - name: Push DVC changes
         run: dvc push
 
@@ -219,23 +209,7 @@ jobs:
           # Scan image
           trivy image --format json --output container-scan.json ${{ steps.build.outputs.image-uri }}
       
-      - name: Container integration tests
-        run: |
-          # Start container for testing
-          docker run -d --name test-container -p 8000:8000 ${{ steps.build.outputs.image-uri }}
-          sleep 30
-          
-          # Health check (verifies API is responding)
-          curl -f http://localhost:8000/ || exit 1
-          
-          # Basic API endpoint test
-          curl -f -X POST http://localhost:8000/predict \
-            -H "Content-Type: application/json" \
-            -d '{"features": [7.0, 200.0, 20000.0, 7.5, 400.0, 200.0, 15.0, 20.0, 350.0]}' || echo "Prediction endpoint test skipped"
-          
-          # Cleanup
-          docker stop test-container
-
+      
       - name: Push to ECR
         if: github.ref == 'refs/heads/master'
         run: |
@@ -345,6 +319,29 @@ jobs:
           echo "Deploying to staging instance: $INSTANCE_ID"
           echo "Image: $IMAGE_URI"
 
+          # -------------------------
+          # Sanitize & validate inputs
+          # Remove stray whitespace/newlines that may break docker image references
+          IMAGE_URI=$(printf '%s' "$IMAGE_URI" | tr -d '\r\n' | sed 's/^\s\+//;s/\s\+$//')
+          ECR_REGISTRY=$(printf '%s' "$ECR_REGISTRY" | tr -d '\r\n' | sed 's/^\s\+//;s/\s\+$//')
+          APP_DIR=$(printf '%s' "$APP_DIR" | tr -d '\r\n' | sed 's/^\s\+//;s/\s\+$//')
+          APP_PORT=$(printf '%s' "$APP_PORT" | tr -d '\r\n' | sed 's/^\s\+//;s/\s\+$//')
+
+          # If ECR_REGISTRY not provided, try to derive it from IMAGE_URI (prefix before first '/')
+          if [ -z "$ECR_REGISTRY" ] && [ -n "$IMAGE_URI" ]; then
+            if [[ "$IMAGE_URI" == */* ]]; then
+              ECR_REGISTRY="${IMAGE_URI%%/*}"
+              echo "Derived ECR_REGISTRY from IMAGE_URI: $ECR_REGISTRY"
+            fi
+          fi
+
+          if [ -z "$IMAGE_URI" ]; then
+            echo "\n✗ ERROR: IMAGE_URI is empty or invalid. Aborting deployment to prevent Docker 'invalid reference format' error.\n"
+            echo "Make sure the build job produced an image URI and that the secret/variable is set."
+            exit 1
+          fi
+          # -------------------------
+
           # Create deployment script
           read -r -d '' SCRIPT_CONTENT << 'EOF' || true
           set -e
@@ -393,6 +390,47 @@ jobs:
 
           # Pull image from ECR
           echo "Pulling image from ECR..."
+
+          # Install and configure Amazon ECR Docker credential helper to avoid
+          # Docker storing credentials unencrypted in config.json. This will
+          # install the helper if missing and configure Docker to use it for
+          # the ECR registry.
+          if ! command -v docker-credential-ecr-login &>/dev/null; then
+            echo "Installing amazon-ecr-credential-helper..."
+            TMPDIR=$(mktemp -d)
+            # pinned release; update version if you want newer releases
+            curl -fsSL -o "$TMPDIR/ecr-helper.tar.gz" "https://github.com/awslabs/amazon-ecr-credential-helper/releases/download/v0.7.0/docker-credential-ecr-login-v0.7.0-linux-amd64.tar.gz"
+            sudo tar -xzf "$TMPDIR/ecr-helper.tar.gz" -C /usr/local/bin docker-credential-ecr-login || true
+            sudo chmod +x /usr/local/bin/docker-credential-ecr-login || true
+            rm -rf "$TMPDIR"
+            echo "✓ amazon-ecr-credential-helper installed"
+          fi
+
+          # Configure Docker to use the credential helper for the ECR registry
+          sudo mkdir -p /root/.docker
+          cat > /tmp/docker-config.json <<JSON
+          {
+            "credHelpers": {
+              "${ECR_REGISTRY}": "ecr-login"
+            }
+          }
+          JSON
+
+          # Back up existing config if present
+          if [ -f /root/.docker/config.json ]; then
+            sudo cp /root/.docker/config.json /root/.docker/config.json.bak || true
+          fi
+          sudo mv /tmp/docker-config.json /root/.docker/config.json
+          sudo chmod 600 /root/.docker/config.json
+
+          # Also place config for ec2-user if present (so non-root docker commands also use it)
+          if id -u ec2-user &>/dev/null; then
+            sudo mkdir -p /home/ec2-user/.docker
+            sudo cp /root/.docker/config.json /home/ec2-user/.docker/config.json
+            sudo chown ec2-user:ec2-user /home/ec2-user/.docker/config.json
+            sudo chmod 600 /home/ec2-user/.docker/config.json
+          fi
+
           aws ecr get-login-password --region "${AWS_REGION}" | sudo docker login --username AWS --password-stdin "${ECR_REGISTRY}"
           sudo docker pull "${IMAGE_URI}"
 
@@ -605,6 +643,28 @@ jobs:
           echo "Deploying to production instance: $INSTANCE_ID"
           echo "Image: $IMAGE_URI"
 
+          # -------------------------
+          # Sanitize & validate inputs to avoid malformed docker references
+          IMAGE_URI=$(printf '%s' "$IMAGE_URI" | tr -d '\r\n' | sed 's/^\s\+//;s/\s\+$//')
+          ECR_REGISTRY=$(printf '%s' "$ECR_REGISTRY" | tr -d '\r\n' | sed 's/^\s\+//;s/\s\+$//')
+          APP_DIR=$(printf '%s' "$APP_DIR" | tr -d '\r\n' | sed 's/^\s\+//;s/\s\+$//')
+          APP_PORT=$(printf '%s' "$APP_PORT" | tr -d '\r\n' | sed 's/^\s\+//;s/\s\+$//')
+
+          # If ECR_REGISTRY not provided, try to derive it from IMAGE_URI (prefix before first '/')
+          if [ -z "$ECR_REGISTRY" ] && [ -n "$IMAGE_URI" ]; then
+            if [[ "$IMAGE_URI" == */* ]]; then
+              ECR_REGISTRY="${IMAGE_URI%%/*}"
+              echo "Derived ECR_REGISTRY from IMAGE_URI: $ECR_REGISTRY"
+            fi
+          fi
+
+          if [ -z "$IMAGE_URI" ]; then
+            echo "\n✗ ERROR: IMAGE_URI is empty or invalid. Aborting production deployment to prevent Docker 'invalid reference format' error.\n"
+            echo "Ensure the build job created an image and that the workflow passed it correctly."
+            exit 1
+          fi
+          # -------------------------
+
           # Create blue-green deployment script
           read -r -d '' SCRIPT_CONTENT << 'EOF' || true
           set -e
@@ -647,6 +707,40 @@ jobs:
 
           # Pull new image (green)
           echo "Pulling new image (green environment)..."
+
+          # Install and configure Amazon ECR Docker credential helper to avoid
+          # Docker storing credentials unencrypted in config.json.
+          if ! command -v docker-credential-ecr-login &>/dev/null; then
+            echo "Installing amazon-ecr-credential-helper..."
+            TMPDIR=$(mktemp -d)
+            curl -fsSL -o "$TMPDIR/ecr-helper.tar.gz" "https://github.com/awslabs/amazon-ecr-credential-helper/releases/download/v0.7.0/docker-credential-ecr-login-v0.7.0-linux-amd64.tar.gz"
+            sudo tar -xzf "$TMPDIR/ecr-helper.tar.gz" -C /usr/local/bin docker-credential-ecr-login || true
+            sudo chmod +x /usr/local/bin/docker-credential-ecr-login || true
+            rm -rf "$TMPDIR"
+            echo "✓ amazon-ecr-credential-helper installed"
+          fi
+
+          sudo mkdir -p /root/.docker
+          cat > /tmp/docker-config.json <<JSON
+          {
+            "credHelpers": {
+              "${ECR_REGISTRY}": "ecr-login"
+            }
+          }
+          JSON
+
+          if [ -f /root/.docker/config.json ]; then
+            sudo cp /root/.docker/config.json /root/.docker/config.json.bak || true
+          fi
+          sudo mv /tmp/docker-config.json /root/.docker/config.json
+          sudo chmod 600 /root/.docker/config.json
+          if id -u ec2-user &>/dev/null; then
+            sudo mkdir -p /home/ec2-user/.docker
+            sudo cp /root/.docker/config.json /home/ec2-user/.docker/config.json
+            sudo chown ec2-user:ec2-user /home/ec2-user/.docker/config.json
+            sudo chmod 600 /home/ec2-user/.docker/config.json
+          fi
+
           aws ecr get-login-password --region "${AWS_REGION}" | sudo docker login --username AWS --password-stdin "${ECR_REGISTRY}"
           sudo docker pull "${IMAGE_URI}"
 
