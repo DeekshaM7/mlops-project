@@ -1,6 +1,0 @@
-artifact_location: file:///D:/Projects/MLOPS/mlops-project/mlruns/641419371352218017
-creation_time: 1762261104298
-experiment_id: '641419371352218017'
-last_update_time: 1762261104298
-lifecycle_stage: active
-name: water-potability-random_forest
