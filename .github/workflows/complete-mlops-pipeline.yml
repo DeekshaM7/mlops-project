@@ -244,10 +244,21 @@ jobs:
       - name: Set deployment variables
         id: vars
         run: |
+          # Primary: image URI from build job
+          IMAGE_URI="${{ needs.build-container.outputs.image-uri }}"
+
+          # Fallback: derive from ECR_REGISTRY, repo and commit hash if build output missing
+          if [ -z "$IMAGE_URI" ]; then
+            if [ -n "${{ secrets.ECR_REGISTRY }}" ] && [ -n "${{ env.ECR_REPOSITORY }}" ] && [ -n "${{ needs.code-quality.outputs.commit-hash }}" ]; then
+              IMAGE_URI="${{ secrets.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:${{ needs.code-quality.outputs.commit-hash }}"
+              echo "Derived IMAGE_URI from ECR_REGISTRY and commit: $IMAGE_URI"
+            fi
+          fi
+
           echo "instance_id=${{ secrets.STAGING_EC2_INSTANCE_ID }}" >> $GITHUB_OUTPUT
           echo "app_dir=/opt/mlops-staging" >> $GITHUB_OUTPUT
           echo "app_port=8000" >> $GITHUB_OUTPUT
-          echo "image_uri=${{ needs.build-container.outputs.image-uri }}" >> $GITHUB_OUTPUT
+          echo "image_uri=$IMAGE_URI" >> $GITHUB_OUTPUT
 
       - name: Resolve EC2 instance ID
         id: resolve-instance
@@ -336,9 +347,16 @@ jobs:
           fi
 
           if [ -z "$IMAGE_URI" ]; then
-            echo "\n✗ ERROR: IMAGE_URI is empty or invalid. Aborting deployment to prevent Docker 'invalid reference format' error.\n"
-            echo "Make sure the build job produced an image URI and that the secret/variable is set."
-            exit 1
+            echo "WARNING: IMAGE_URI is empty; attempting to derive from ECR_REGISTRY and commit hash..."
+            # Try to derive from ECR_REGISTRY and repo + commit hash
+            if [ -n "$ECR_REGISTRY" ] && [ -n "${ECR_REPOSITORY}" ] && [ -n "${{ needs.code-quality.outputs.commit-hash }}" ]; then
+              IMAGE_URI="${ECR_REGISTRY}/${ECR_REPOSITORY}:${{ needs.code-quality.outputs.commit-hash }}"
+              echo "✓ Derived IMAGE_URI: $IMAGE_URI"
+            else
+              echo "\n✗ ERROR: IMAGE_URI is empty or invalid and cannot be derived. Aborting to prevent Docker 'invalid reference format' error.\n"
+              echo "Make sure the build job produced an image URI and that the secret/variable is set."
+              exit 1
+            fi
           fi
           # -------------------------
 
@@ -570,10 +588,21 @@ jobs:
       - name: Set deployment variables
         id: vars
         run: |
+          # Primary: image URI from build job
+          IMAGE_URI="${{ needs.build-container.outputs.image-uri }}"
+
+          # Fallback: derive from ECR_REGISTRY, repo and commit hash if build output missing
+          if [ -z "$IMAGE_URI" ]; then
+            if [ -n "${{ secrets.ECR_REGISTRY }}" ] && [ -n "${{ env.ECR_REPOSITORY }}" ] && [ -n "${{ needs.code-quality.outputs.commit-hash }}" ]; then
+              IMAGE_URI="${{ secrets.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:${{ needs.code-quality.outputs.commit-hash }}"
+              echo "Derived IMAGE_URI from ECR_REGISTRY and commit: $IMAGE_URI"
+            fi
+          fi
+
           echo "instance_id=${{ secrets.PROD_EC2_INSTANCE_ID }}" >> $GITHUB_OUTPUT
           echo "app_dir=/opt/mlops-production" >> $GITHUB_OUTPUT
           echo "app_port=8000" >> $GITHUB_OUTPUT
-          echo "image_uri=${{ needs.build-container.outputs.image-uri }}" >> $GITHUB_OUTPUT
+          echo "image_uri=$IMAGE_URI" >> $GITHUB_OUTPUT
 
       - name: Resolve EC2 instance ID
         id: resolve-instance
