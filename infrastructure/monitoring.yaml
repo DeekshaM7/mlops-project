@@ -21,7 +21,7 @@ Parameters:
   NotificationEmail:
     Type: String
     Description: Email for alarm notifications
-    Default: admin@example.com
+    Default: chris11.vinod@gmail.com
 
 Resources:
   # SNS Topic for Alerts

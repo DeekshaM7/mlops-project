@@ -10,15 +10,15 @@ preprocess:
   val_size: 0.1
   random_state: 42
 model:
-  type: random_forest
+  type: xgboost        # Options: random_forest, xgboost
   params:
     n_estimators: 300
-    max_depth: null
+    max_depth:
     min_samples_split: 2
     min_samples_leaf: 1
     class_weight: balanced
 train:
-  n_trials: 20
+  n_trials: 35
   scoring: roc_auc
   cv_folds: 5
 evaluate:

@@ -1,9 +1,0 @@
-{
-  "val_roc_auc": 1.0,
-  "best_params": {
-    "n_estimators": 288,
-    "max_depth": 27,
-    "min_samples_split": 7,
-    "min_samples_leaf": 1
-  }
-}

@@ -1,5 +1,9 @@
 [core]
     remote = origin
+    no_scm = false
+[cache]
+    type = copy
+    protected = false
 ['remote "origin"']
     url = s3://water-quality-ml-dvc-data/dvc-storage
     region = ap-south-1
